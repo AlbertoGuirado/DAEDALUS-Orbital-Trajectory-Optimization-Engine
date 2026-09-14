@@ -1,0 +1,4 @@
+# Runtime versions used for the Phase 1 validation (Python 3.12.1).
+# This is a version snapshot, not a cross-platform lock with hashes.
+numpy==2.3.3
+scipy==1.16.3

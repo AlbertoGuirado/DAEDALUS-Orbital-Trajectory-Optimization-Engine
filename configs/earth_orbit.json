@@ -1,0 +1,18 @@
+{
+  "radius_m": 7000000.0,
+  "inclination_rad": 0.49741883681838395,
+  "mu_m3_s2": 398600441800000.0,
+  "periods": 1,
+  "samples": 1001,
+  "method": "RK45",
+  "max_step_s": 60.0,
+  "rtol": 1e-10,
+  "atol": [0.001, 0.001, 0.001, 0.000001, 0.000001, 0.000001],
+  "acceptance": {
+    "max_position_error_m": 1.0,
+    "max_velocity_error_m_s": 0.001,
+    "max_relative_energy_drift": 1e-7,
+    "max_relative_angular_momentum_drift": 1e-7,
+    "max_absolute_eccentricity_drift": 1e-7
+  }
+}
