@@ -2,13 +2,13 @@
 
 > Documento 1 de 3. Complementarios: `02-requerimientos.md` y `03-fundamentos-cientificos-y-algoritmicos.md`.
 >
-> **Estado del documento:** descripción de diseño y auditoría del código existente a fecha de redacción. No contiene resultados experimentales: ningún benchmark se ha ejecutado todavía.
+> **Estado del documento (2026-10-16):** alcance y arquitectura revisados sobre `fd9d785` (`v0.1.0`). Fase 1 implementada y validada para los casos documentados. Ver [validación](phase1-validation.md) y [cierre](phase1-closeout.md). Las fases posteriores describen objetivos futuros.
 
 ---
 
 ## 1. Identidad del proyecto
 
-**Nombre:** Autonomous Orbital Transfer Optimizer (AOTO)
+**Nombre:** DAEDALUS — Orbital Trajectory Optimization Engine (nombre inicial: Autonomous Orbital Transfer Optimizer).
 
 **Definición en una frase:** motor de optimización algorítmica que, dada una órbita inicial, una órbita objetivo y un conjunto de restricciones de misión, calcula automáticamente la secuencia de maniobras que minimiza el coste de la transferencia.
 
@@ -20,7 +20,9 @@
 
 ## 2. Alcance
 
-### 2.1 Lo que el proyecto ES
+### 2.1 Alcance objetivo del proyecto
+
+La entrega actual cubre dos cuerpos, elementos orbitales, invariantes y costes Δv. Las extensiones, optimizadores y restricciones de esta tabla son trabajo futuro.
 
 | Dimensión | Contenido |
 |---|---|
@@ -70,67 +72,39 @@ orbital-optimizer/
 └── README.md
 ```
 
-### 3.2 Arquitectura realmente presente en el repositorio
+### 3.2 Arquitectura vigente
 
-```
-orbital-optimizer/
-├── physics/
-│   ├── __init__.py          (con contenido: API pública del paquete)
-│   ├── dynamics.py          (VACÍO, 0 bytes)
-│   ├── propagator.py        (con contenido: RK4 + RK45)
-│   └── perturbations.py     (VACÍO, 0 bytes)
-├── optimization/
-│   ├── differential_evolution.py  (VACÍO)
-│   ├── genetic_algorithm.py       (VACÍO)
-│   ├── optimal_control.py         (VACÍO)
-│   └── hybrid_optimizer.py        (VACÍO)
-├── missions/
-│   ├── mission_definition.py      (VACÍO)
-│   └── orbit_transfer.py          (VACÍO)
-├── agent/
-│   └── mission_planner.py         (VACÍO)
-├── experiments/
-│   ├── __init__.py                (docstring)
-│   └── validate_two_body.py       (VACÍO)
-├── tests/
-│   ├── __init__.py                (docstring)
-│   └── test_dynamics.py           (VACÍO)
-├── pyproject.toml
-├── requirements-reproducible.txt
-└── .gitignore
+```text
+src/orbital_optimizer/
+  dynamics/two_body.py
+  orbital/mechanics.py
+  orbital/elements.py
+  simulation/propagator.py
+  visualization/plots.py
+src/physics/                 adaptadores de compatibilidad
+experiments/validate_two_body.py
+configs/earth_orbit.json
+  orbital/kepler.py          solver elíptico (ampliación local)
+  simulation/kepler_propagator.py  propagación analítica (ampliación local)
+tests/                      32 tests en cinco módulos, ampliación validada localmente
+docs/                       documentación técnica
 ```
 
-### 3.3 Divergencias detectadas entre lo propuesto y lo existente
+### 3.3 Resultado de la auditoría inicial
 
-| Nº | Divergencia | Impacto |
-|---|---|---|
-| D1 | No existe la capa `src/`. Los paquetes cuelgan de la raíz | Menor. Afecta a empaquetado e importaciones, no a la física |
-| D2 | `dynamics/` y `orbital/` se han fusionado en un único paquete `physics/` | Menor, pero conviene decidirlo de forma consciente |
-| D3 | No existen `simulation/` ni `visualization/` | Pendiente de las fases 3 y 5 |
-| D4 | No existen `notebooks/`, `configs/`, `docs/`, `README.md` | `docs/` se crea con estos informes. El resto queda pendiente |
-| D5 | Existe un paquete `agent/` que no figura en la especificación | Riesgo de deriva hacia un enfoque de agente/IA, explícitamente excluido del núcleo |
-
-### 3.4 Errores estructurales bloqueantes en el código actual
-
-Estos defectos impiden que el paquete se importe siquiera. Son hechos verificados por lectura del código, no estimaciones.
-
-| Nº | Defecto | Ubicación |
-|---|---|---|
-| E1 | `propagator.py` importa `EARTH_MU`, `two_body_dynamics`, `validate_mu` y `validate_state` desde `dynamics`, que es un fichero vacío | `physics/propagator.py`, línea 10 |
-| E2 | `physics/__init__.py` importa un módulo `elements` que no existe en el directorio | `physics/__init__.py`, líneas 11-16 |
-| E3 | `__init__.py` reexporta `delta_v`, `specific_energy`, `specific_angular_momentum`, `total_delta_v`, `orbital_period`, `OrbitalElements`, `elements_to_state`, `state_to_elements`: ninguna implementada | `physics/__init__.py` |
-| E4 | No existe ningún test con contenido. `test_dynamics.py` está vacío | `tests/test_dynamics.py` |
-| E5 | No existe el script de validación. `validate_two_body.py` está vacío | `experiments/validate_two_body.py` |
-| E6 | `pyproject.toml` declara `readme = "README.md"`, fichero que no existe. El build falla | `pyproject.toml`, línea 9 |
-| E7 | `pyproject.toml` solo empaqueta `physics*` y `experiments*`. Los paquetes `optimization`, `missions` y `agent` quedan fuera de la distribución | `pyproject.toml`, línea 15 |
-
-**Conclusión de la auditoría:** el único componente sustantivo escrito es el propagador. La Fase 1 está incompleta: falta su dependencia directa (`dynamics.py`), falta el módulo de elementos orbitales y falta por completo la capa de validación.
+Los bloqueos históricos E1–E6 (dinámica y elementos ausentes, imports rotos,
+README, tests y experimento vacíos) están resueltos en `v0.1.0`.
+Se adoptó layout `src`, con física, geometría orbital y simulación separadas.
+El empaquetado publica `orbital_optimizer*` y `physics*`; las reservas vacías
+`optimization/`, `missions/` y `agent/` permanecen fuera del paquete instalado.
+No son funcionalidades disponibles. El inventario y la evidencia del cierre
+se encuentran en [phase1-closeout.md](phase1-closeout.md).
 
 ---
 
-## 4. El único componente implementado: el propagador
+## 4. Propagación numérica implementada
 
-`physics/propagator.py` contiene aproximadamente 185 líneas de código de propagación numérica. Características observadas:
+`src/orbital_optimizer/simulation/propagator.py` implementa la propagación numérica. Características observadas:
 
 **Dos integradores seleccionables**
 
@@ -169,7 +143,7 @@ Estos defectos impiden que el paquete se importe siquiera. Son hechos verificado
 | Versión mínima declarada | 3.11 |
 | Versión usada en la validación | 3.12.1 |
 | Dependencias de ejecución | NumPy (>=2.2,<3), SciPy (>=1.16,<2) |
-| Versiones congeladas | NumPy 2.2.6, SciPy 1.16.3 |
+| Versiones congeladas | NumPy 2.3.3, SciPy 1.16.3 |
 | Backend de empaquetado | setuptools >= 68 |
 
 El fichero `requirements-reproducible.txt` es una instantánea de versiones, no un lock multiplataforma con hashes. Esta distinción está documentada en el propio fichero y debe mantenerse honesta.
@@ -223,7 +197,7 @@ El proyecto se construye de forma incremental. Cada fase debe estar validada ant
 
 Propagador de dos cuerpos fiable. Conversión entre elementos orbitales y vectores de estado. Cálculo de energía específica, momento angular y Δv. Tests contra soluciones analíticas conocidas.
 
-**Estado actual: incompleta.** Solo existe el propagador. Faltan `dynamics.py`, el módulo de elementos, los tests y el experimento de validación.
+**Estado actual: implementada y validada para los casos de Fase 1.** El baseline pasó 20 tests; la ampliación local Kepler pasa 32. El experimento circular cumple sus cinco límites. Ver [validación](phase1-validation.md) y [cierre](phase1-closeout.md).
 
 ### Fase 2 — Baseline analítico
 
@@ -259,7 +233,7 @@ Capa final que recibe requisitos de misión y genera automáticamente una estrat
 
 ## 7. Sistema de experimentos
 
-El proyecto incluirá un sistema reproducible de experimentos. Para cada algoritmo y escenario se registra:
+La Fase 1 dispone de un experimento determinista que registra configuración, versiones, estados, errores e invariantes. Esta tabla corresponde al sistema futuro de comparación de optimizadores:
 
 | Métrica | Descripción |
 |---|---|
@@ -272,7 +246,7 @@ El proyecto incluirá un sistema reproducible de experimentos. Para cada algorit
 | Violaciones de restricción | Magnitud y tipo de cada violación |
 | Tasa de éxito | Fracción de ejecuciones que alcanzan una solución factible |
 
-Las ejecuciones se repiten con múltiples semillas. Cada experimento queda definido por un fichero de configuración versionado.
+Las futuras ejecuciones estocásticas se repetirán con múltiples semillas; el experimento actual no utiliza aleatoriedad. Cada experimento queda definido por un fichero de configuración versionado.
 
 **Gráficas previstas:** trayectoria orbital, curvas de convergencia, Δv frente a tiempo de cómputo, comparación entre optimizadores y frente de Pareto cuando exista optimización multiobjetivo.
 
@@ -311,19 +285,15 @@ Estos principios gobiernan todas las decisiones técnicas del proyecto y no son 
 
 ## 10. Estado global resumido
 
-| Fase | Componente | Estado |
+| Fase | Componente | Estado revisado el 2026-10-16 |
 |---|---|---|
-| 1 | Propagador RK4 / RK45 | Escrito, sin validar, no importable |
-| 1 | Dinámica de dos cuerpos (`dynamics.py`) | Vacío |
-| 1 | Elementos orbitales (`elements.py`) | No existe |
-| 1 | Tests de validación | Vacíos |
-| 1 | Experimento de validación | Vacío |
-| 2 | Baseline de Hohmann | No iniciado |
-| 3 | Motor de optimización | No iniciado |
-| 4 | Restricciones | No iniciado |
-| 5 | Perturbaciones | No iniciado |
-| 6 | Mission Optimization Engine | No iniciado |
-| — | Documentación | Este conjunto de tres informes |
-| — | README | No existe (y `pyproject.toml` lo referencia) |
+| 1 | Dos cuerpos, invariantes, elementos y RK4/RK45 | Implementados y probados |
+| 1 | Tests del baseline | 20 superados localmente |
+| 1 | Ampliación Kepler local | 32 tests superados; modelo de error de redondeo documentado |
+| 1 | Experimento circular y gráficos | Ejecutado; cinco criterios cumplidos |
+| 1 | API, contratos y cierre documental | Documentados en `docs/` y enlazados al vault |
+| 2 | Hohmann e impulsos aplicados | Pendientes de ingeniería |
+| 3–6 | Optimización, restricciones, perturbaciones y misiones | No implementadas |
 
-**El proyecto no arranca en su estado actual.** El primer trabajo necesario es completar `dynamics.py` y `elements.py`, con lo que el paquete pasaría a ser importable y la Fase 1 quedaría en condiciones de ser validada.
+La evidencia es local y se limita a los casos y al entorno registrados.
+No se ha comprobado el estado remoto de GitHub Actions en esta revisión.

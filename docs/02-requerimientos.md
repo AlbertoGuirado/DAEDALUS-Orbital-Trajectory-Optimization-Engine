@@ -31,6 +31,8 @@ Aplican a todas las fases y a todo el código del proyecto.
 
 ## 2. Fase 1 — Orbital Dynamics Engine
 
+Estado y evidencia: [matriz de cierre](phase1-closeout.md). Los requisitos mantienen su prioridad original; los recomendados y opcionales no implican capacidades públicas implementadas.
+
 ### 2.1 Requisitos funcionales
 
 | ID | Prioridad | Requisito |
@@ -256,21 +258,26 @@ La Fase 1 se considera cerrada cuando se cumplen simultáneamente estas cuatro c
 
 ---
 
-## 11. Deuda técnica registrada
+## 11. Seguimiento de la deuda técnica inicial
 
-Estos elementos no son requisitos nuevos sino defectos actuales que deben resolverse. Se derivan de la auditoría del código recogida en el documento 1.
+Revisión de cierre del 2026-10-16 sobre `fd9d785`. Se conservan los
+identificadores de la auditoría inicial para mantener trazabilidad.
 
-| ID | Prioridad | Acción requerida |
+| ID | Estado | Evidencia o decisión |
 |---|---|---|
-| DT-01 | BLOQUEANTE | Implementar `physics/dynamics.py`. Actualmente vacío, pero `propagator.py` importa cuatro símbolos de él |
-| DT-02 | BLOQUEANTE | Implementar `physics/elements.py`. No existe, pero `physics/__init__.py` lo importa |
-| DT-03 | BLOQUEANTE | Crear el README que `pyproject.toml` declara. Su ausencia rompe la construcción del paquete |
-| DT-04 | ALTA | Escribir `tests/test_dynamics.py`, actualmente vacío |
-| DT-05 | ALTA | Escribir `experiments/validate_two_body.py`, actualmente vacío |
-| DT-06 | MEDIA | Decidir y documentar si se adopta la estructura con `src/` de la especificación original o se consolida la estructura plana actual |
-| DT-07 | MEDIA | Corregir la sección de empaquetado de `pyproject.toml`, que excluye los paquetes `optimization`, `missions` y `agent` |
-| DT-08 | MEDIA | Decidir el destino del paquete `agent/`, que no figura en la especificación y arrastra riesgo de deriva hacia un enfoque de IA excluido del núcleo |
-| DT-09 | BAJA | Crear los directorios `configs/` y `notebooks/` cuando las fases correspondientes los requieran |
+| DT-01 | Resuelto | `src/orbital_optimizer/dynamics/two_body.py` e imports compatibles |
+| DT-02 | Resuelto | `src/orbital_optimizer/orbital/elements.py` y `src/physics/elements.py` |
+| DT-03 | Resuelto | `README.md` existe y documenta instalación y ejecución |
+| DT-04 | Resuelto | Baseline: 20 tests en cuatro módulos. Ampliación Kepler: 32 tests en cinco módulos, superados localmente |
+| DT-05 | Resuelto | Experimento circular ejecutado con aceptación positiva |
+| DT-06 | Resuelto | Layout `src/` documentado en `phase1.md` |
+| DT-07 | Resuelto para Fase 1 | Solo se empaquetan capacidades implementadas y adaptadores; reservas futuras excluidas deliberadamente |
+| DT-08 | Diferido | `agent/` sigue como reserva vacía; no implica un planificador implementado |
+| DT-09 | Resuelto para Fase 1 | `configs/earth_orbit.json` existe; notebooks no son necesarios para ejecutar la validación |
+
+La [matriz de cierre](phase1-closeout.md) concreta la cobertura real de
+RF-1 y RV-1, incluyendo el alcance del acuerdo entre integradores y los
+requisitos recomendados/opcionales que no forman parte de la API.
 
 ---
 

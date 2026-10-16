@@ -7,7 +7,7 @@ from numpy.testing import assert_allclose
 
 from orbital_optimizer import (
     EARTH_MU, OrbitalElements, elements_to_state, propagate, orbital_period,
-    specific_energy, specific_angular_momentum, eccentricity_vector,
+    specific_energy, specific_angular_momentum, eccentricity_vector, propagate_kepler,
 )
 
 
@@ -78,6 +78,37 @@ class PropagatorTests(unittest.TestCase):
         self.assertLess(np.max(np.abs(energy-energy[0]))/abs(energy[0]),1e-7)
         self.assertLess(np.max(np.linalg.norm(h-h[0],axis=1))/np.linalg.norm(h[0]),1e-7)
         self.assertLess(np.max(np.linalg.norm(e-e[0],axis=1)),1e-7)
+        # Vis-viva with the input a: v^2-mu(2/r-1/a) = 2*delta_epsilon, and
+        # 2|epsilon|/v^2 <= (1+e)/(1-e) = 1.5, so the energy bound gives 1.5e-7.
+        radius = np.linalg.norm(result.states[:,:3],axis=1)
+        speed2 = np.sum(result.states[:,3:]**2,axis=1)
+        self.assertLess(np.max(np.abs(speed2/(EARTH_MU*(2/radius-1/9e6))-1)),1.5e-7)
+
+    def test_propagated_apsides_in_inclined_ellipse(self) -> None:
+        a, e, nu = 9e6, .2, 1.2
+        initial = elements_to_state(OrbitalElements(a,e,.7,.4,.9,nu))
+        period = orbital_period(a)
+        # Closed-form passage times: tan(E/2)=sqrt((1-e)/(1+e))tan(nu/2), M=E-e sin E.
+        E0 = 2*np.arctan(np.sqrt((1-e)/(1+e))*np.tan(nu/2))
+        periapsis_time = (2*np.pi-(E0-e*np.sin(E0)))/(2*np.pi)*period
+        apoapsis_time = periapsis_time-period/2
+        result = propagate(initial,period,sample_times=[apoapsis_time,periapsis_time])
+        for index, expected in ((1,a*(1+e)),(2,a*(1-e))):
+            r, v = result.states[index,:3], result.states[index,3:]
+            self.assertLess(abs(np.linalg.norm(r)-expected),1.)
+            # Flight-path sine; 1 m and 1e-3 m/s errors perturb it by ~1e-7.
+            self.assertLess(abs(np.dot(r,v))/(np.linalg.norm(r)*np.linalg.norm(v)),1e-6)
+
+    def test_numerical_against_analytic_kepler_propagation(self) -> None:
+        initial = elements_to_state(OrbitalElements(9e6,.2,.7,.4,.9,1.2))
+        period = orbital_period(9e6)
+        times = np.linspace(0,period,201)
+        expected = propagate_kepler(initial,period,sample_times=times).states
+        for method, step in (("RK45",60.),("RK4",period/1000)):
+            with self.subTest(method=method):
+                result = propagate(initial,period,method=method,sample_times=times,max_step=step)
+                self.assertLess(np.max(np.linalg.norm(result.states[:,:3]-expected[:,:3],axis=1)),1.)
+                self.assertLess(np.max(np.linalg.norm(result.states[:,3:]-expected[:,3:],axis=1)),.001)
 
     def test_rk4_fourth_order_convergence(self) -> None:
         errors = []
@@ -88,10 +119,17 @@ class PropagatorTests(unittest.TestCase):
         self.assertTrue(np.all((orders>3.7)&(orders<4.5)), (errors,orders))
 
     def test_agreement_between_integrators(self) -> None:
-        rk4 = propagate(self.state,self.period,method="RK4",max_step=self.period/1000)
-        rk45 = propagate(self.state,self.period,rtol=1e-12,atol=1e-9)
-        self.assertLess(np.linalg.norm(rk4.final_state[:3]-rk45.final_state[:3]),1.)
-        self.assertLess(np.linalg.norm(rk4.final_state[3:]-rk45.final_state[3:]),.001)
+        # Samples fall on every 5th nominal RK4 step; float rounding still adds
+        # some shortened sub-steps (nfev ~4.4e3, not 4e3), which only reduce error.
+        ellipse = elements_to_state(OrbitalElements(9e6,.2,.7,.4,.9,1.2))
+        for name, initial, period in (("circular",self.state,self.period),
+                                      ("inclined ellipse",ellipse,orbital_period(9e6))):
+            with self.subTest(orbit=name):
+                times = np.linspace(0,period,201)
+                rk4 = propagate(initial,period,method="RK4",max_step=period/1000,sample_times=times)
+                rk45 = propagate(initial,period,rtol=1e-12,atol=1e-9,sample_times=times)
+                self.assertLess(np.max(np.linalg.norm(rk4.states[:,:3]-rk45.states[:,:3],axis=1)),1.)
+                self.assertLess(np.max(np.linalg.norm(rk4.states[:,3:]-rk45.states[:,3:],axis=1)),.001)
 
     def test_sampling_copies_and_small_interval(self) -> None:
         for method in ("RK4","RK45"):

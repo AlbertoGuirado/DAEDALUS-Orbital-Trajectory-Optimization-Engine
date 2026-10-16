@@ -2,7 +2,9 @@
 
 > Documento 3 de 3. Complementarios: `01-caracteristicas-del-proyecto.md` y `02-requerimientos.md`.
 >
-> **Naturaleza del documento:** referencia teórica. Recoge las ecuaciones, los algoritmos y los criterios de validación que sustentan el proyecto. Toda ecuación aquí recogida es teoría establecida de mecánica orbital y optimización numérica. **No contiene ningún resultado experimental del proyecto**, porque todavía no se ha ejecutado ningún experimento.
+> **Naturaleza del documento:** referencia teórica. Recoge las ecuaciones, los algoritmos y los criterios de validación que sustentan el proyecto. Toda ecuación aquí recogida es teoría establecida de mecánica orbital y optimización numérica. Los resultados experimentales del proyecto se registran por separado en [phase1-validation.md](phase1-validation.md).
+
+> **Alcance revisado (2026-10-16):** este documento contiene teoría y diseño de todas las fases. La implementación actual se limita a la Fase 1; consultar [API](phase1-api.md) y [cierre](phase1-closeout.md) para capacidades verificadas.
 
 ---
 
@@ -307,7 +309,7 @@ Esta ecuación sostiene uno de los tests de validación más potentes del proyec
 | Extensibilidad | Solo dos cuerpos puros | Admite cualquier perturbación |
 | Uso en el proyecto | Referencia de validación | Motor de simulación |
 
-**Decisión de diseño:** el motor de simulación es numérico, porque las fases 4 y 5 requieren perturbaciones y encendidos finitos que la solución kepleriana no admite. La propagación analítica se implementa, si acaso, exclusivamente como oráculo de validación. Implementarla tiene alto valor: convierte el test de precisión del integrador en una comparación contra verdad exacta y no solo contra invariantes conservados.
+**Decisión de diseño:** el motor extensible de simulación es numérico, porque las fases 4 y 5 requieren perturbaciones y encendidos finitos. La ampliación local de Fase 1 incorpora una API analítica de dos cuerpos como referencia adicional. Se contrasta con oráculos independientes; su resultado de validación está en [phase1-validation.md](phase1-validation.md). Una solución analítica evaluada en float64 conserva errores de redondeo y de resolución de raíces.
 
 ---
 
@@ -881,7 +883,7 @@ donde $\mathbf{v}_{\text{rel}}$ es la velocidad relativa a la atmósfera, que co
 | Presión de radiación solar | Relevante para relaciones área-masa altas |
 | Armónicos de orden superior | Correcciones sobre J2, orden de magnitud menor |
 
-El proyecto implementa J2 y arrastre. Los demás quedan fuera de alcance y esa exclusión debe constar en la documentación de cualquier resultado.
+La Fase 5 prevé implementar J2 y arrastre; actualmente ninguno está implementado. Los demás modelos quedan fuera del alcance previsto y esa exclusión deberá constar en cualquier resultado futuro.
 
 ---
 

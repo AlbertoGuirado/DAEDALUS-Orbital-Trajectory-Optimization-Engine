@@ -1,9 +1,13 @@
 # Fase 1: diseño y contrato de validación
 
 La implementación vigente está en `src/orbital_optimizer`. Los documentos
-01–03 describen el proyecto general y una auditoría anterior; sus referencias
+01–03 describen el proyecto general, sus requisitos y fundamentos; sus referencias
 a `physics` se resuelven mediante una capa de imports compatible, sin duplicar
 ecuaciones. Los directorios vacíos originales de fases futuras son reservas.
+
+El contrato original corresponde a `v0.1.0`. La ampliación local
+`feature/phase-1-kepler` añade solver y propagación analítica; su estado de
+validación se registra por separado en [phase1-validation.md](phase1-validation.md).
 
 ## Arquitectura y decisiones
 
@@ -12,7 +16,9 @@ src/orbital_optimizer/
   dynamics/two_body.py        constante, validación del estado y campo gravitatorio
   orbital/mechanics.py       invariantes, periodo y costes de impulsos
   orbital/elements.py        elementos clásicos y conversiones
+  orbital/kepler.py          ecuación de Kepler (ampliación local)
   simulation/propagator.py    RK4, RK45 y resultado de propagación
+  simulation/kepler_propagator.py  coeficientes f/g (ampliación local)
   visualization/plots.py     gráficos científicos opcionales
 src/physics/                 compatibilidad con imports anteriores
 tests/                       tests unitarios y referencias analíticas
@@ -116,3 +122,53 @@ Referencias: [SciPy solve_ivp](https://docs.scipy.org/doc/scipy/reference/genera
 [NASA/JPL NAIF oscelt](https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/cspice/oscelt_c.html),
 [IERS TN36](https://iers-conventions.obspm.fr/content/tn36.pdf).
 NAIF usa km y anomalía media en su interfaz; aquí se usan SI y anomalía verdadera.
+
+## Guía de consulta
+
+[API y contratos de datos](phase1-api.md), [validación ejecutada](phase1-validation.md)
+y [auditoría de cierre y trazabilidad](phase1-closeout.md).
+
+## Formulación de la ampliación analítica local
+
+`solve_kepler(M,e)` resuelve `E-e*sin(E)=M`, con anomalías en radianes,
+`0<=e<1` y M escalar finito. La derivada `1-e*cos(E)>0` da una raíz única;
+el acondicionamiento `dE/dM=1/(1-e*cos(E))` empeora cerca del periapsis
+cuando e se aproxima a uno. El solver reduce vueltas internamente y las
+restaura al devolver E. Newton se sustituye por bisección si la propuesta
+sale del intervalo de raíz. El límite interno es 100 iteraciones; termina
+por residuo cero, intervalo o corrección a escala de épsilon float64,
+y lanza `RuntimeError` si no converge.
+
+Para propagar desde un estado cartesiano se define
+`a=-mu/(2*epsilon)`, `n=sqrt(mu/a^3)`, `c=1-r0/a` y
+`s=dot(r0_vector,v0_vector)/sqrt(mu*a)`. El incremento x de anomalía excéntrica
+satisface `n*t=x-c*sin(x)+s*(1-cos(x))`; su derivada es `r/a>0`.
+La posición y velocidad se obtienen con coeficientes de Lagrange:
+
+
+\[
+f=1-\frac{a}{r_0}(1-\cos x),\qquad
+g=t-\frac{x-\sin x}{n},\qquad
+r=a(1-c\cos x+s\sin x),
+\]
+\[
+\dot f=-\frac{\sqrt{\mu a}\sin x}{rr_0},\qquad
+\dot g=1-\frac{a}{r}(1-\cos x),\qquad
+\mathbf r=f\mathbf r_0+g\mathbf v_0,\quad
+\mathbf v=\dot f\mathbf r_0+\dot g\mathbf v_0.
+\]
+
+Aquí r0 y r sin negrita son normas, en metros; f y gdot son
+adimensionales, g está en segundos y fdot en s⁻¹. El código elimina vueltas
+completas de tiempo/anomalía antes de evaluar f/g. Evita construir ángulos
+para evolucionar el estado, pero valida inicialmente el dominio mediante
+`state_to_elements`. El resultado conserva errores de raíz y redondeo;
+su denominación analítica no garantiza precisión universal.
+
+Los tests contrastan raíces contra bisección independiente y trayectorias
+contra referencias circular y elíptica independientes. El modelo de error analítico de `tests/test_kepler.py` suma un término
+de evaluación (`1e-12*a`, `1e-12*v_periapsis`) y otro de desfase temporal
+por redondeo de energía y semieje mayor. La fórmula y su revisión tras
+el primer fallo están en [phase1-validation.md](phase1-validation.md).
+Los resultados observados, incluido cualquier incumplimiento, se registran
+en el informe de validación sin cambiar esos criterios desde documentación.
