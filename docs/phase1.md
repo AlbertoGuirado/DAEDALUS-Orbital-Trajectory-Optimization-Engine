@@ -1,5 +1,7 @@
 # Fase 1: diseño y contrato de validación
 
+Flujo de datos de ambas fases: [Data flow — mission planning](data-flow-mission-planning.md).
+
 La implementación vigente está en `src/orbital_optimizer`. Los documentos
 01–03 describen el proyecto general y una auditoría anterior; sus referencias
 a `physics` se resuelven mediante una capa de imports compatible, sin duplicar
