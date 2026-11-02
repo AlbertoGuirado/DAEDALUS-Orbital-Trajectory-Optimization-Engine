@@ -197,13 +197,13 @@ El proyecto se construye de forma incremental. Cada fase debe estar validada ant
 
 Propagador de dos cuerpos fiable. Conversión entre elementos orbitales y vectores de estado. Cálculo de energía específica, momento angular y Δv. Tests contra soluciones analíticas conocidas.
 
-**Estado actual: implementada y validada para los casos de Fase 1.** El baseline pasó 20 tests; la ampliación local Kepler pasa 32. El experimento circular cumple sus cinco límites. Ver [validación](phase1-validation.md) y [cierre](phase1-closeout.md).
+**Estado actual: implementada y validada para los casos de Fase 1.** El baseline pasó 20 tests; la ampliación Kepler pasa 32 y está integrada en `develop`. El experimento circular cumple sus cinco límites. Ver [validación](phase1-validation.md) y [cierre](phase1-closeout.md).
 
 ### Fase 2 — Baseline analítico
 
 Transferencia de Hohmann entre órbitas circulares coplanarias. Para cada misión: Δv total, Δv de cada impulso, tiempo de transferencia y masa de propelente. Sirve como referencia contra la que medir a los optimizadores.
 
-**Estado: no iniciada.**
+**Estado: implementada y validada para sus requisitos obligatorios (RF-2.01 a RF-2.04, RV-2.01 a RV-2.03).** Integrada en `develop` junto con la ampliación Kepler de la Fase 1: 47 tests superados. Los requisitos recomendados u opcionales RF-2.05 (bielíptica), RF-2.06 (cambio de plano) y RF-2.07 (Lambert) no están implementados. Ver [API y resultados de la Fase 2](phase2-api.md).
 
 ### Fase 3 — Optimization Engine
 
@@ -223,11 +223,14 @@ Extensiones al modelo, cada una activable y desactivable de forma independiente 
 
 **Estado: no iniciada.**
 
-### Fase 6 — Mission Optimization Engine
+### Fase 6 — Benchmark y Mission Optimization Engine
 
-Capa final que recibe requisitos de misión y genera automáticamente una estrategia de transferencia óptima, apoyándose en todo lo anterior.
+La Fase 6 se divide en dos subfases con objetivos y criterios de cierre distintos (decisión del 2026-11-02):
 
-**Estado: no iniciada.**
+- **Fase 6A — Benchmark y validación experimental de algoritmos.** Comparación reproducible de optimizadores con escenarios fijados de antemano, múltiples semillas, presupuesto idéntico de evaluaciones y tests estadísticos no paramétricos. Requisitos RF-6A.01 a RF-6A.08.
+- **Fase 6B — Mission Optimization Engine.** Capa final determinista que recibe requisitos de misión y genera una estrategia de transferencia optimizada, apoyándose en las fases anteriores. Requisitos RF-6B.xx en borrador, pendientes de aprobación.
+
+**Estado: ambas no iniciadas.**
 
 ---
 

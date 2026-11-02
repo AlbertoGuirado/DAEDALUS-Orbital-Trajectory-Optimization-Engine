@@ -252,48 +252,15 @@ activa está en `src/physics/`.
 
 ## Material local de visualización y conocimiento
 
-**`visualization/` en la raíz.** Guarda ideas e imágenes de referencia para
-una posible interfaz. Es distinta del módulo científico
-`src/orbital_optimizer/visualization/`.
+**Retirado de `develop` (commit `5fd4329`).** Las carpetas `visualization/`
+(ideas e imágenes de referencia para una interfaz, incluido `IDEA.md`) y
+`vault/.obsidian/` (preferencias locales de Obsidian) no contienen algoritmos
+ni evidencia científica y ya no forman parte de la rama del motor. Se conservan
+íntegras en el historial (commit `3df6f11`) y en la rama
+`feature/phase-2-hohmann`. La base de conocimiento con notas científicas sigue
+fuera del repositorio, en la carpeta hermana `../DAEDALUS-Vault/`.
 
-**`visualization/IDEA.md`.** Describe una propuesta de entorno de diseño
-y análisis de misiones; sus pantallas y funciones son ideas, no una aplicación
-implementada en esta carpeta.
-
-**`visualization/C.png`.** Es una imagen local de referencia visual;
-el motor y el experimento no la utilizan.
-
-**`visualization/S.png`.** Es otra imagen local de referencia visual,
-separada de los gráficos producidos por la simulación.
-
-**`visualization/image.png`.** Es material gráfico local de apoyo al diseño;
-no forma parte de los cálculos científicos.
-
-**`visualization/world map1.jpg`.** Es un recurso gráfico local de mapa
-para exploración visual; no interviene en el modelo orbital.
-
-**`visualization/world map2.jpg`.** Es un segundo recurso gráfico local
-de mapa, también independiente de la propagación actual.
-
-**`vault/`.** Contiene únicamente configuración local de Obsidian. La base
-de conocimiento con notas científicas está fuera del repositorio, en la
-carpeta hermana `../DAEDALUS-Vault/`.
-
-**`vault/.obsidian/`.** Guarda preferencias del espacio local de Obsidian;
-no contiene algoritmos ni evidencia científica.
-
-**`vault/.obsidian/app.json`.** Guarda opciones generales de Obsidian para
-ese espacio local.
-
-**`vault/.obsidian/appearance.json`.** Guarda preferencias de apariencia
-del espacio de Obsidian.
-
-**`vault/.obsidian/core-plugins.json`.** Guarda la selección de plugins
-integrados de Obsidian para ese espacio.
-
-**`vault/.obsidian/workspace.json`.** Conserva la disposición local de
-paneles y archivos abiertos en Obsidian.
-
+La interfaz Streamlit local está aislada en la rama `feature/streamlit-ui`.
 ## Entorno y archivos generados
 
 **`.venv/`.** Contiene el intérprete y las dependencias del entorno Python

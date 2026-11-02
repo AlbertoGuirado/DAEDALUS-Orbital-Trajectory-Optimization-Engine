@@ -110,6 +110,8 @@ La Fase 1 se considera cerrada cuando se cumplen simultáneamente estas cuatro c
 | RV-2.02 | OBLIGATORIO | El tiempo de transferencia coincide con la mitad del periodo de la elipse de transferencia calculado independientemente |
 | RV-2.03 | RECOMENDADO | Para el caso de radios iguales, el Δv de Hohmann tiende a cero |
 
+**Estado (2026-11-02):** RF-2.01 a RF-2.04 y RV-2.01 a RV-2.03 implementados y verificados en `tests/test_transfers.py` y `tests/test_impulses.py`; integrados en `develop` (commit `16c5ac0`). RF-2.05, RF-2.06 y RF-2.07 **no implementados**. API y resultados: [phase2-api.md](phase2-api.md).
+
 **Criterio de aceptación:** el baseline produce, para cualquier par de radios circulares, una solución cuya validez se verifica propagando numéricamente la trayectoria resultante y comprobando que la órbita final coincide con la objetivo dentro de tolerancia.
 
 ---
@@ -201,18 +203,39 @@ La Fase 1 se considera cerrada cuando se cumplen simultáneamente estas cuatro c
 
 ---
 
-## 7. Requisitos de experimentación y benchmark
+## 7. Fase 6 — Benchmark y Mission Optimization Engine
+
+La Fase 6 se divide en dos subfases (decisión del 2026-11-02). Los antiguos
+identificadores `RF-6.0n` pasan a ser `RF-6A.0n` sin cambio de contenido ni de
+prioridad: `RF-6.01` → `RF-6A.01`, …, `RF-6.08` → `RF-6A.08`.
+
+### 7.1 Fase 6A — Benchmark y validación experimental de algoritmos
 
 | ID | Prioridad | Requisito |
 |---|---|---|
-| RF-6.01 | OBLIGATORIO | Cada experimento registra: mejor objetivo, Δv, tiempo de transferencia, tiempo de cómputo, número de evaluaciones de función, historia de convergencia, violaciones de restricción y tasa de éxito |
-| RF-6.02 | OBLIGATORIO | Cada configuración se ejecuta con múltiples semillas independientes |
-| RF-6.03 | OBLIGATORIO | Todos los algoritmos comparados reciben idéntico presupuesto de evaluaciones de función. El tiempo de pared se registra pero no se usa como criterio de parada en la comparación |
-| RF-6.04 | OBLIGATORIO | Los escenarios de benchmark se definen y fijan antes de ejecutar las comparaciones, para evitar selección a posteriori |
-| RF-6.05 | RECOMENDADO | Las comparaciones entre algoritmos se acompañan de un test estadístico no paramétrico apropiado, dado que las distribuciones de resultados no son normales |
-| RF-6.06 | OBLIGATORIO | Generar gráficas de trayectoria orbital, curvas de convergencia, Δv frente a tiempo de cómputo y comparación entre optimizadores |
-| RF-6.07 | RECOMENDADO | Generar el frente de Pareto cuando exista optimización multiobjetivo |
-| RF-6.08 | OBLIGATORIO | Toda gráfica lleva ejes etiquetados con unidades |
+| RF-6A.01 | OBLIGATORIO | Cada experimento registra: mejor objetivo, Δv, tiempo de transferencia, tiempo de cómputo, número de evaluaciones de función, historia de convergencia, violaciones de restricción y tasa de éxito |
+| RF-6A.02 | OBLIGATORIO | Cada configuración se ejecuta con múltiples semillas independientes |
+| RF-6A.03 | OBLIGATORIO | Todos los algoritmos comparados reciben idéntico presupuesto de evaluaciones de función. El tiempo de pared se registra pero no se usa como criterio de parada en la comparación |
+| RF-6A.04 | OBLIGATORIO | Los escenarios de benchmark se definen y fijan antes de ejecutar las comparaciones, para evitar selección a posteriori |
+| RF-6A.05 | RECOMENDADO | Las comparaciones entre algoritmos se acompañan de un test estadístico no paramétrico apropiado, dado que las distribuciones de resultados no son normales |
+| RF-6A.06 | OBLIGATORIO | Generar gráficas de trayectoria orbital, curvas de convergencia, Δv frente a tiempo de cómputo y comparación entre optimizadores |
+| RF-6A.07 | RECOMENDADO | Generar el frente de Pareto cuando exista optimización multiobjetivo |
+| RF-6A.08 | OBLIGATORIO | Toda gráfica lleva ejes etiquetados con unidades |
+
+### 7.2 Fase 6B — Mission Optimization Engine
+
+> **BORRADOR, pendiente de aprobación.** Requisitos propuestos para delimitar
+> el alcance; no son vinculantes hasta su revisión en la puerta de la Fase 6B.
+
+| ID | Prioridad | Requisito propuesto |
+|---|---|---|
+| RF-6B.01 | OBLIGATORIO | Recibir una definición de misión conforme a RD-02 a RD-05 y validarla al cargarla |
+| RF-6B.02 | OBLIGATORIO | Traducir la misión a un problema de optimización usando exclusivamente las interfaces aprobadas de dinámica (Fases 1, 2 y 5), optimización (Fase 3) y restricciones (Fase 4) |
+| RF-6B.03 | OBLIGATORIO | Devolver una estrategia de transferencia: secuencia de maniobras con instantes, vectores Δv, coste, tiempo, propelente y violaciones de restricción |
+| RF-6B.04 | OBLIGATORIO | Verificar la estrategia devuelta propagándola con el simulador antes de informarla |
+| RF-6B.05 | OBLIGATORIO | Ser determinista dada la definición de misión, la configuración y la semilla; registrar ambas con el resultado |
+| RF-6B.06 | OBLIGATORIO | No presentar un óptimo local como global; informar del método, el criterio de parada y la comparación con el baseline analítico cuando exista |
+| RF-6B.07 | RECOMENDADO | Comparar estrategias alternativas (número de impulsos, optimizadores) mediante la infraestructura de la Fase 6A |
 
 ---
 
@@ -275,6 +298,23 @@ identificadores de la auditoría inicial para mantener trazabilidad.
 | DT-08 | Diferido | `agent/` sigue como reserva vacía; no implica un planificador implementado |
 | DT-09 | Resuelto para Fase 1 | `configs/earth_orbit.json` existe; notebooks no son necesarios para ejecutar la validación |
 
+### 11.1 Revisión de integración del 2026-11-02
+
+Integración de `feature/phase-1-kepler` y `feature/phase-2-hohmann` en `develop`.
+Estado de DT-01 a DT-09 sin cambios. Nueva deuda identificada en la auditoría
+previa a la Fase 3:
+
+| ID | Prioridad | Descripción | Fase afectada |
+|---|---|---|---|
+| DT-10 | ALTA | `propagate()` valida el dominio con `state_to_elements()` y lanza `ValueError` ante estados hiperbólicos, parabólicos o radiales. Un candidato del optimizador puede producirlos: la función objetivo necesita una política explícita para evaluaciones no válidas | 3 |
+| DT-11 | ALTA | `propagate_with_impulses()` devuelve solo el estado final. La restricción de altitud mínima a lo largo de la trayectoria (RF-4.05, RV-4.02) exige la trayectoria o el periapsis de cada arco | 4 |
+| DT-12 | MEDIA | No existe convención de época ni de escala de tiempo: el tiempo es transcurrido desde cero. Necesaria para J2/arrastre y escenarios de misión | 5, 6B |
+| DT-13 | MEDIA | Los instantes de impulso deben ser estrictamente crecientes; las variables de decisión deben reparar o penalizar impulsos coincidentes | 3 |
+| DT-14 | MEDIA | Coste por evaluación de RK45 con `rtol=1e-10` elevado para optimizadores poblacionales; valorar `propagate_kepler` para arcos balísticos de dos cuerpos | 3 |
+| DT-15 | BAJA | La rama `feature/streamlit-ui` importa `altair` y `pandas`, presentes solo como dependencias transitivas de Streamlit; no declaradas en el extra `ui` | UI |
+| DT-16 | BAJA | `build/` y `dist/` locales contienen un paquete de la Fase 1 sin la Fase 2 (ignorados por Git); regenerar o eliminar antes de cualquier publicación | Release |
+| DT-08 | Diferido | `agent/` sigue vacío; su destino se decidirá en la puerta de la Fase 6B, como capa determinista, no de IA | 6B |
+
 La [matriz de cierre](phase1-closeout.md) concreta la cobertura real de
 RF-1 y RV-1, incluyendo el alcance del acuerdo entre integradores y los
 requisitos recomendados/opcionales que no forman parte de la API.
@@ -290,7 +330,8 @@ requisitos recomendados/opcionales que no forman parte de la API.
 | 3 | RF-3.01 a RF-3.23 | RV-3.01 a RV-3.04 | Differential Evolution reproduce el óptimo de Hohmann en el caso donde es el óptimo conocido |
 | 4 | RF-4.01 a RF-4.10 | RV-4.01 a RV-4.02 | Toda violación de restricción detectada, cuantificada y tratada explícitamente |
 | 5 | RF-5.01 a RF-5.06 | RV-5.01 a RV-5.04 | Con perturbaciones desactivadas se recupera exactamente el modelo de dos cuerpos |
-| 6 | RF-6.01 a RF-6.08 | — | Benchmark completo con múltiples semillas y escenarios fijados de antemano |
+| 6A | RF-6A.01 a RF-6A.08 | — | Benchmark completo con múltiples semillas y escenarios fijados de antemano |
+| 6B | RF-6B.01 a RF-6B.07 (borrador) | Por definir en su puerta de fase | Misión → estrategia verificada por propagación, reproducible y comparada con el baseline |
 
 ---
 
