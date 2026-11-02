@@ -12,6 +12,7 @@ dependencies = ["numpy>=2.2,<3", "scipy>=1.16,<2"]
 
 [project.optional-dependencies]
 plots = ["matplotlib>=3.9,<4"]
+ui = ["streamlit>=1.57,<2", "plotly>=5.20,<8"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
