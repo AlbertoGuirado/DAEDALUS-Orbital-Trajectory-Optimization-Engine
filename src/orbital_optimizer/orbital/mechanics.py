@@ -57,6 +57,26 @@ def delta_v(velocity_before: ArrayLike, velocity_after: ArrayLike) -> float:
         return float(_finite(np.hypot.reduce(after - before)))
 
 
+# Conventional standard gravity defining specific impulse, m/s^2; not local gravity.
+STANDARD_GRAVITY: float = 9.80665
+
+
+def propellant_mass(initial_mass: float, delta_v: float, specific_impulse: float) -> float:
+    """Propellant consumed by one impulse, m0*(1-exp(-dv/(Isp*g0))), in kg.
+
+    Tsiolkovsky equation: m0 in kg, delta_v >= 0 in m/s, specific_impulse > 0 in s.
+    """
+    mass, dv, isp = (real_array(value, name) for value, name in (
+        (initial_mass, "initial_mass"), (delta_v, "delta_v"), (specific_impulse, "specific_impulse"),
+    ))
+    if mass.shape != () or dv.shape != () or isp.shape != ():
+        raise ValueError("initial_mass, delta_v and specific_impulse must be scalars")
+    if mass <= 0 or dv < 0 or isp <= 0:
+        raise ValueError("initial_mass and specific_impulse must be positive; delta_v must be nonnegative")
+    with np.errstate(over="ignore", invalid="ignore"):
+        return float(_finite(mass * -np.expm1(-dv / (isp * STANDARD_GRAVITY))))
+
+
 def total_delta_v(burn_vectors: ArrayLike) -> float:
     """Sum_k |delta_v_k| in m/s, for (N,3) impulse vectors in m/s; [] costs 0."""
     burns = real_array(burn_vectors, "burn_vectors")
