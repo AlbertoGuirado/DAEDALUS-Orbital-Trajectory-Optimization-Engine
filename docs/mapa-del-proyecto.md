@@ -1,8 +1,8 @@
 # Mapa de carpetas y ficheros
 
-Guía breve del árbol de `orbital-optimizer`, revisada el **17 de octubre de
-2026**. Cada entrada explica su papel actual. Incluye los cambios locales
-de Kepler; no todos pertenecen al tag `v0.1.0`.
+Guía breve del árbol de `orbital-optimizer`, revisada el **2 de noviembre de
+2026**, sobre `develop` (`27b4116`). Incluye Kepler y Phase 2 integrados;
+el tag `v0.1.0` conserva el baseline histórico.
 
 Para orientarte: `src/` calcula, `configs/` configura, `experiments/` ejecuta,
 `tests/` comprueba, `outputs/` guarda resultados y `docs/` explica el proyecto.
@@ -63,8 +63,11 @@ orbitales clásicos y su conversión a posición/velocidad y viceversa,
 incluidas las convenciones para órbitas circulares y ecuatoriales.
 
 **`src/orbital_optimizer/orbital/mechanics.py`.** Calcula energía, momento
-angular, excentricidad, nodo, periodo y costes Δv. Calcula el coste de los
+angular, excentricidad, nodo, periodo, costes Δv y propelente ideal por Tsiolkovsky. Calcula el coste de los
 impulsos, pero no los aplica a una trayectoria.
+
+**`src/orbital_optimizer/orbital/transfers.py`.** Calcula Hohmann: magnitudes
+de los dos impulsos, coste total, semieje y tiempo. No orienta los vectores.
 
 **`src/orbital_optimizer/orbital/kepler.py`.** Resuelve la ecuación elíptica
 de Kepler mediante Newton con salvaguarda por bisección, relacionando
@@ -79,6 +82,9 @@ de simulación; las implementaciones se encuentran en sus módulos.
 **`src/orbital_optimizer/simulation/propagator.py`.** Propaga órbitas con
 RK4 o RK45 y define `PropagationResult`, que contiene tiempos, estados y
 datos del método utilizado.
+
+**`src/orbital_optimizer/simulation/impulsive.py`.** Encadena vuelo libre
+y saltos de velocidad inercial; devuelve únicamente el estado final.
 
 **`src/orbital_optimizer/simulation/kepler_propagator.py`.** Propaga
 analíticamente el modelo de dos cuerpos mediante coeficientes de Lagrange
@@ -120,6 +126,9 @@ del código que los ejecuta.
 experimento, el integrador, las muestras, las tolerancias y los cinco límites
 de aceptación.
 
+**`configs/experiments/`.** Configuraciones exploratorias y su README;
+no sustituyen la referencia de aceptación `earth_orbit.json`.
+
 **`experiments/`.** Contiene los puntos de ejecución que combinan
 configuración, motor científico y exportación de resultados.
 
@@ -152,6 +161,11 @@ apsides y fallos del integrador.
 **`tests/test_kepler.py`.** Comprueba el solver de Kepler y la propagación
 analítica mediante bisección independiente, geometrías variadas, invariantes
 y cierre de múltiples vueltas.
+
+**`tests/test_transfers.py`.** Nueve tests de Hohmann y Tsiolkovsky.
+
+**`tests/test_impulses.py`.** Seis tests de aplicación de impulsos, horarios
+y llegada a la órbita circular objetivo. La suite completa contiene 47 tests.
 
 **`tests/test_experiment.py`.** Comprueba que el experimento acepta el caso
 de referencia y rechaza límites incumplidos o configuraciones inválidas.
@@ -189,6 +203,16 @@ de error de la ampliación Kepler.
 
 **`docs/phase1-closeout.md`.** Relaciona los requisitos con implementación
 y pruebas, y recoge la auditoría documental y el alcance del cierre local.
+
+**`docs/phase2-api.md`.** Contrato de Hohmann, Tsiolkovsky e impulsos.
+
+**`docs/phase1-phase2-audit.md`.** Auditoría actual, reproducción y límites
+de la evidencia tras integrar las dos fases.
+
+**`docs/data-flow-mission-planning.md`.** Flujo real y conexiones propuestas,
+con vistas `mission-planning-interaction.html` y `.svg`.
+
+**`docs/glosario.md`.** Definiciones breves de términos del proyecto.
 
 **`docs/informe-visual.html`.** Es un documento HTML local que presenta
 un mapa interactivo del sistema; es material de presentación y no ejecuta

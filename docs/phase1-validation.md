@@ -1,5 +1,10 @@
 # Validación ejecutada — 14 de septiembre de 2026
 
+> **Registro histórico del cierre de Phase 1.** Las referencias a cambios
+> sin commit y a Phase 2 futura describen aquel momento, no el checkout actual.
+> Kepler y Hohmann están integrados en `develop`. Estado y reproducción del
+> 2026-11-02: [auditoría de integración](phase1-phase2-audit.md).
+
 > La reproducción del baseline y la validación de la ampliación local de
 > Kepler se registran al final de este documento por separado.
 

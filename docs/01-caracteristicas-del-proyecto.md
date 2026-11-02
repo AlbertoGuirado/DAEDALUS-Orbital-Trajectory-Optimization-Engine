@@ -2,7 +2,7 @@
 
 > Documento 1 de 3. Complementarios: `02-requerimientos.md` y `03-fundamentos-cientificos-y-algoritmicos.md`.
 >
-> **Estado del documento (2026-10-16):** alcance y arquitectura revisados sobre `fd9d785` (`v0.1.0`). Fase 1 implementada y validada para los casos documentados. Ver [validación](phase1-validation.md) y [cierre](phase1-closeout.md). Las fases posteriores describen objetivos futuros.
+> **Estado del documento (2026-11-02):** Phase 1 y requisitos obligatorios de Phase 2 integrados en `develop` (`27b4116`); 47 tests locales OK. Fases 3–6: Planned. Ver [evidencia y Known Limitations](phase1-phase2-audit.md).
 
 ---
 
@@ -79,14 +79,16 @@ src/orbital_optimizer/
   dynamics/two_body.py
   orbital/mechanics.py
   orbital/elements.py
+  orbital/kepler.py          solve_kepler
+  orbital/transfers.py       HohmannTransfer, hohmann_transfer
+  simulation/kepler_propagator.py  propagate_kepler
+  simulation/impulsive.py    propagate_with_impulses
   simulation/propagator.py
   visualization/plots.py
 src/physics/                 adaptadores de compatibilidad
 experiments/validate_two_body.py
 configs/earth_orbit.json
-  orbital/kepler.py          solver elíptico (ampliación local)
-  simulation/kepler_propagator.py  propagación analítica (ampliación local)
-tests/                      32 tests en cinco módulos, ampliación validada localmente
+tests/                      47 tests en siete módulos, integración validada localmente
 docs/                       documentación técnica
 ```
 
@@ -292,10 +294,10 @@ Estos principios gobiernan todas las decisiones técnicas del proyecto y no son 
 |---|---|---|
 | 1 | Dos cuerpos, invariantes, elementos y RK4/RK45 | Implementados y probados |
 | 1 | Tests del baseline | 20 superados localmente |
-| 1 | Ampliación Kepler local | 32 tests superados; modelo de error de redondeo documentado |
+| 1 | Ampliación Kepler integrada | 32 tests de Phase 1; historial del modelo de error conservado |
 | 1 | Experimento circular y gráficos | Ejecutado; cinco criterios cumplidos |
 | 1 | API, contratos y cierre documental | Documentados en `docs/` y enlazados al vault |
-| 2 | Hohmann e impulsos aplicados | Pendientes de ingeniería |
+| 2 | Hohmann, Tsiolkovsky e impulsos | Implemented: 15 tests adicionales; ver auditoría de integración |
 | 3–6 | Optimización, restricciones, perturbaciones y misiones | No implementadas |
 
 La evidencia es local y se limita a los casos y al entorno registrados.

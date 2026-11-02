@@ -8,8 +8,8 @@
 - `fix/<descripcion>`: corrección con un test de regresión cuando proceda.
 - Tags `vMAJOR.MINOR.PATCH`: hitos reproducibles. `v0.1.0` corresponde a la Fase 1.
 
-La rama inicial `feature/phase-2-hohmann` parte del mismo código validado que
-`develop`; no contiene aún una implementación de Hohmann. Las ramas posteriores
+Kepler y el baseline Hohmann de `feature/phase-2-hohmann` están integrados
+en `develop`; consultar `docs/phase1-phase2-audit.md` para evidencia y límites. Las ramas posteriores
 se crearán cuando comience su trabajo, para evitar ramas vacías que envejezcan.
 
 Flujo: pull request de `feature/*` a `develop`, revisión de resultados, y pull

@@ -1,7 +1,7 @@
 # Fase 1: API y contratos de datos
 
-Interfaces contrastadas con `src/orbital_optimizer` el 2026-10-16, incluida
-la ampliación local en `feature/phase-1-kepler` aún sin commit.
+Interfaces contrastadas con `src/orbital_optimizer` el 2026-11-02, sobre
+`develop` (`27b4116`), con Kepler integrado. Para impulsos, ver [Phase 2](phase2-api.md).
 Instalación y entorno: [README del proyecto](../README.md).
 Ecuaciones y convenciones singulares: [phase1.md](phase1.md).
 

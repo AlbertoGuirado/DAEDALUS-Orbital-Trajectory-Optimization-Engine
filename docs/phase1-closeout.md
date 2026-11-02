@@ -1,5 +1,10 @@
 # Fase 1: auditoría documental y cierre
 
+> **Registro histórico del cierre de Phase 1.** Las referencias a cambios
+> sin commit y a Phase 2 futura describen aquel momento, no el checkout actual.
+> Kepler y Hohmann están integrados en `develop`. Estado y reproducción del
+> 2026-11-02: [auditoría de integración](phase1-phase2-audit.md).
+
 Revisión local del **2026-10-16**, sobre `fd9d785`, tag `v0.1.0`, rama
 `develop` como baseline. Durante la revisión aparecieron cambios de ingeniería
 en `feature/phase-1-kepler` aún sin commit, que se documentan por separado.

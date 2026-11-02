@@ -4,15 +4,15 @@
 Incluye zoom y funciona sin conexión ni soporte Mermaid.
 También está disponible como [imagen SVG](mission-planning-interaction.svg).
 
-Revisión del checkout local: **27 de octubre de 2026**, rama
-`feature/phase-2-hohmann`. Este documento describe cómo circulan los datos
+Revisión del checkout: **2 de noviembre de 2026**, rama
+`develop`, commit `27b4116`. Este documento describe cómo circulan los datos
 desde la definición de una órbita hasta la comprobación de una transferencia.
 No implica que exista ya una aplicación de planificación de misiones.
 
 **Leyenda:** flecha continua = intercambio soportado por las interfaces
 actuales; flecha discontinua = conexión propuesta que todavía requiere
-orquestación o desarrollo. Los bloques de fase 2 corresponden a código local
-sin commit en el momento de la revisión; aquí no se certifica su validación.
+orquestación o desarrollo. Los bloques de fase 2 están integrados. La evidencia y sus límites
+se registran en [la auditoría](phase1-phase2-audit.md).
 
 ## Flujo general
 

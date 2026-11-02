@@ -7,8 +7,8 @@ La implementación vigente está en `src/orbital_optimizer`. Los documentos
 a `physics` se resuelven mediante una capa de imports compatible, sin duplicar
 ecuaciones. Los directorios vacíos originales de fases futuras son reservas.
 
-El contrato original corresponde a `v0.1.0`. La ampliación local
-`feature/phase-1-kepler` añade solver y propagación analítica; su estado de
+El contrato original corresponde a `v0.1.0`. La ampliación
+Kepler integrada en `develop` añade solver y propagación analítica; su estado de
 validación se registra por separado en [phase1-validation.md](phase1-validation.md).
 
 ## Arquitectura y decisiones
@@ -18,9 +18,9 @@ src/orbital_optimizer/
   dynamics/two_body.py        constante, validación del estado y campo gravitatorio
   orbital/mechanics.py       invariantes, periodo y costes de impulsos
   orbital/elements.py        elementos clásicos y conversiones
-  orbital/kepler.py          ecuación de Kepler (ampliación local)
+  orbital/kepler.py          ecuación de Kepler (integrado)
   simulation/propagator.py    RK4, RK45 y resultado de propagación
-  simulation/kepler_propagator.py  coeficientes f/g (ampliación local)
+  simulation/kepler_propagator.py  coeficientes f/g (integrado)
   visualization/plots.py     gráficos científicos opcionales
 src/physics/                 compatibilidad con imports anteriores
 tests/                       tests unitarios y referencias analíticas
@@ -88,8 +88,9 @@ parabólicas. La fase valida elipses no radiales (`a>0`, `0<=e<1`). No hay
 superficie terrestre, colisiones, propulsión ni perturbaciones.
 
 Coste impulsivo: `delta_v=|v_after-v_before|`, `total_delta_v=sum_k |dv_k|`,
-en m/s. La suma de normas no es la norma del vector suma. Aquí solo se calcula
-el coste: el propagador es de vuelo libre y no aplica burns.
+en m/s. La suma de normas no es la norma del vector suma. Estas funciones solo calculan
+el coste: `propagate` es de vuelo libre. Phase 2 añade
+[`propagate_with_impulses`](phase2-api.md), que encadena arcos y aplica saltos.
 
 ## Criterios fijados antes de las pruebas
 
@@ -130,7 +131,7 @@ NAIF usa km y anomalía media en su interfaz; aquí se usan SI y anomalía verda
 [API y contratos de datos](phase1-api.md), [validación ejecutada](phase1-validation.md)
 y [auditoría de cierre y trazabilidad](phase1-closeout.md).
 
-## Formulación de la ampliación analítica local
+## Formulación de la propagación analítica integrada
 
 `solve_kepler(M,e)` resuelve `E-e*sin(E)=M`, con anomalías en radianes,
 `0<=e<1` y M escalar finito. La derivada `1-e*cos(E)>0` da una raíz única;
@@ -174,3 +175,15 @@ por redondeo de energía y semieje mayor. La fórmula y su revisión tras
 el primer fallo están en [phase1-validation.md](phase1-validation.md).
 Los resultados observados, incluido cualquier incumplimiento, se registran
 en el informe de validación sin cambiar esos criterios desde documentación.
+
+## Estado actual y límites entre fases
+
+**Implemented:** ecuaciones y APIs descritas arriba; 32 tests de Phase 1,
+dentro de los 47 tests de integración ejecutados el 2026-11-02.
+**Planned:** fuerzas perturbadoras, empuje finito y propagación no elíptica.
+**Known Limitations:** la validación del campo gravitatorio acepta estados
+finitos con radio no nulo; la restricción elíptica no radial pertenece a las
+conversiones y propagadores. No debe atribuirse a todas las funciones por igual.
+Los invariantes se conservan en vuelo libre; los impulsos de Phase 2 pueden
+cambiar energía, momento angular y excentricidad.
+La reproducción actual figura en [la auditoría de integración](phase1-phase2-audit.md).

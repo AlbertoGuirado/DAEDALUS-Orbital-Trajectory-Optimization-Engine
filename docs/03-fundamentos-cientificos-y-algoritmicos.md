@@ -4,7 +4,7 @@
 >
 > **Naturaleza del documento:** referencia teórica. Recoge las ecuaciones, los algoritmos y los criterios de validación que sustentan el proyecto. Toda ecuación aquí recogida es teoría establecida de mecánica orbital y optimización numérica. Los resultados experimentales del proyecto se registran por separado en [phase1-validation.md](phase1-validation.md).
 
-> **Alcance revisado (2026-10-16):** este documento contiene teoría y diseño de todas las fases. La implementación actual se limita a la Fase 1; consultar [API](phase1-api.md) y [cierre](phase1-closeout.md) para capacidades verificadas.
+> **Alcance revisado (2026-11-02):** teoría y diseño de todas las fases. **Implemented:** Phase 1 y Hohmann, Tsiolkovsky e impulsos de Phase 2. **Planned:** restantes transferencias, optimización y modelos de fases posteriores. Contratos y **Known Limitations**: [Phase 1](phase1-api.md), [Phase 2](phase2-api.md) y [auditoría](phase1-phase2-audit.md).
 
 ---
 
@@ -305,11 +305,11 @@ Esta ecuación sostiene uno de los tests de validación más potentes del proyec
 | Aspecto | Propagación kepleriana | Integración numérica |
 |---|---|---|
 | Exactitud | Exacta, salvo error de redondeo | Acumula error de truncamiento |
-| Coste | Constante, independiente del intervalo | Proporcional al intervalo |
+| Coste | Depende de muestras e iteraciones de ra?z | Depende de pasos, tolerancias y muestras |
 | Extensibilidad | Solo dos cuerpos puros | Admite cualquier perturbación |
 | Uso en el proyecto | Referencia de validación | Motor de simulación |
 
-**Decisión de diseño:** el motor extensible de simulación es numérico, porque las fases 4 y 5 requieren perturbaciones y encendidos finitos. La ampliación local de Fase 1 incorpora una API analítica de dos cuerpos como referencia adicional. Se contrasta con oráculos independientes; su resultado de validación está en [phase1-validation.md](phase1-validation.md). Una solución analítica evaluada en float64 conserva errores de redondeo y de resolución de raíces.
+**Decisión de diseño:** el motor extensible de simulación es numérico, porque las fases 4 y 5 requieren perturbaciones y encendidos finitos. La ampliación integrada de Fase 1 incorpora una API analítica de dos cuerpos como referencia adicional. Se contrasta con oráculos independientes; su resultado de validación está en [phase1-validation.md](phase1-validation.md). Una solución analítica evaluada en float64 conserva errores de redondeo y de resolución de raíces.
 
 ---
 
@@ -455,7 +455,7 @@ El tiempo de transferencia es medio periodo de la elipse:
 
 $$t_{\text{transferencia}} = \pi\sqrt{\frac{a_t^{3}}{\mu}}$$
 
-**Su papel en el proyecto.** La transferencia de Hohmann es óptima en Δv entre órbitas circulares coplanarias con dos impulsos, dentro de un rango amplio de relaciones de radios. Esto la convierte en el baseline ideal: **un optimizador que no la alcance está mal implementado o mal configurado**, y eso proporciona una prueba de corrección del motor de optimización, no solo una comparación de rendimiento. Es el contenido del requisito RV-3.01.
+**Su papel en el proyecto.** Es el baseline analítico implementado. Las fórmulas anteriores son incrementos tangenciales con signo; la API devuelve sus módulos. No prueban optimalidad para misiones con restricciones, otros números de impulsos o cambios de plano. RV-3.01 es un criterio futuro de comparación sobre el mismo problema: no alcanzar la referencia requiere investigar formulación, restricciones, presupuesto y convergencia; por sí solo no demuestra un defecto de implementación. Véase [contrato y referencias de Phase 2](phase2-api.md).
 
 ### 8.3 Transferencia bielíptica
 

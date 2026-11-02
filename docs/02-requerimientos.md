@@ -346,3 +346,16 @@ Un componente se considera terminado cuando cumple las siete condiciones siguien
 5. Sus tolerancias están justificadas por análisis, no ajustadas a posteriori.
 6. No rompe ningún test existente.
 7. Su decisión de diseño está documentada cuando existían alternativas razonables.
+
+## Estado de implementación tras Phase 2 — 2026-11-02
+
+- **Implemented:** RF-1 y su ampliación Kepler según el contrato de Phase 1;
+  RF-2.01–04 y RV-2.01–03 con los tests de transferencias e impulsos.
+- **Planned:** RF-2.05–07 y requisitos de fases posteriores. La condición
+  OBLIGATORIO define el criterio de su fase, no una capacidad ya disponible.
+- **Known Limitations:** DT-10, DT-11 y DT-13 se observan en las APIs actuales.
+  DT-14 es una preocupación de rendimiento pendiente de benchmark, no una
+  medición demostrada por esta revisión. DT-15 y DT-16 no se revalidaron aquí.
+
+La [auditoría de integración](phase1-phase2-audit.md) registra 47 tests OK,
+reproducción de casos y límites. No se han modificado requisitos ni tolerancias.
