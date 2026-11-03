@@ -608,7 +608,7 @@ Propuesto por Storn y Price en 1997. Es el primer algoritmo del proyecto por su 
 
 $$\mathbf{v}_i = \mathbf{x}_{r_1} + F\,(\mathbf{x}_{r_2} - \mathbf{x}_{r_3})$$
 
-con $r_1, r_2, r_3$ índices distintos entre sí y distintos de $i$, y $F \in [0,2]$ el factor de escala diferencial.
+con $r_1, r_2, r_3$ índices distintos entre sí y distintos de $i$, y $F \in (0,2]$ el factor de escala diferencial. Se excluye $F=0$ porque anula la diferencia y el mutante se reduce a una copia de $\mathbf{x}_{r_1}$.
 
 **Cruce binomial:**
 
