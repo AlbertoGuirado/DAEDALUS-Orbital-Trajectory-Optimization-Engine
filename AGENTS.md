@@ -132,6 +132,27 @@ Para tareas documentales, limita los cambios a documentación y registra los
 posibles defectos del código como discrepancias para ingeniería. No implementes
 funcionalidades ni cambies tests bajo una actualización documental.
 
+
+## Documentation Delegation
+
+For documentation-related tasks, use specialized agents.
+
+- Internal project documentation:
+  delegate to `daedalus_docs`.
+
+- Scientific knowledge and reference documentation:
+  delegate to `daedalus_vault`.
+
+- Tasks involving both documentation domains:
+  delegate to both agents in parallel when their work
+  can be performed independently.
+
+The main agent coordinates the work and reviews
+the final output.
+
+Never delegate scientific implementation changes
+to documentation agents.
+
 ## Git y entrega
 
 Sigue `CONTRIBUTING.md`: `main` estable, `develop` integración y ramas
@@ -142,3 +163,4 @@ Haz commit/push cuando la tarea o la conversación lo autoricen.
 Al cerrar, informa de archivos y comportamiento cambiados, comprobaciones
 realmente ejecutadas, resultados y límites pendientes. Si hay commit/push,
 indica rama y commit. No confundas configuración de CI con una ejecución aprobada.
+
