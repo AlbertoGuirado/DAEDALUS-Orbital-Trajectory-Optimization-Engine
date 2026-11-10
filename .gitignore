@@ -16,3 +16,6 @@ outputs/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local Obsidian preferences of the versioned vault copy (only Markdown is tracked)
+.obsidian/
