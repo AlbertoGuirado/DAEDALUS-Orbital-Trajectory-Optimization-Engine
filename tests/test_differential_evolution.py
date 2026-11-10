@@ -273,6 +273,40 @@ class ProblemContractTests(unittest.TestCase):
         self.assertFalse(any(np.shares_memory(old, result.x_best) for old in problem.kept))
 
 
+    def test_mutating_returned_evaluations_after_the_run_cannot_alter_the_result(self) -> None:
+        class KeepingProblem:
+            """Returns Evaluations with nested metadata and keeps them for later tampering."""
+
+            name = "keeping"
+            bounds = Bounds([-2.0, -1.0], [3.0, 4.0])
+
+            def __init__(self) -> None:
+                self.returned: list[Evaluation] = []
+
+            def evaluate(self, x):
+                evaluation = Evaluation(x, sphere(x), EvaluationStatus.VALID,
+                                        metadata={"nested": {"values": [1.0, 2.0]}, "array": np.array([3.0, 4.0])})
+                self.returned.append(evaluation)
+                return evaluation
+
+        problem = KeepingProblem()
+        result = run(problem, 200, seed=3)
+        before = json.dumps(result.to_dict(), sort_keys=True, allow_nan=False)
+        best_x = np.array(result.best_evaluation.x)
+        for evaluation in problem.returned:
+            evaluation.x.setflags(write=True)
+            evaluation.x[:] = 99.0
+            evaluation.metadata["nested"]["values"].append(-1.0)
+            evaluation.metadata["array"][:] = -5.0
+        self.assertEqual(problem.returned[0].metadata["nested"]["values"][-1], -1.0)   # tampering happened
+        self.assertTrue(np.all(problem.returned[-1].x == 99.0))
+        self.assertEqual(json.dumps(result.to_dict(), sort_keys=True, allow_nan=False), before)
+        assert_array_equal(result.best_evaluation.x, best_x)
+        self.assertEqual(result.best_evaluation.metadata["nested"]["values"], [1.0, 2.0])
+        assert_array_equal(result.best_evaluation.metadata["array"], [3.0, 4.0])
+        self.assertTrue(all(result.best_evaluation is not evaluation for evaluation in problem.returned))
+
+
 class ScriptedProblem:
     """Status by call index: listed calls are INVALID_DOMAIN, every other call is VALID with value 1.0."""
 

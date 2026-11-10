@@ -127,12 +127,15 @@ class Bounds:
 
         Non-periodic variables are clipped to [lower, upper] only to absorb
         floating-point rounding of the affine map. Periodic variables always
-        land in the half-open period [lower, upper): if the map yields
-        x >= upper (u = 1, or u just below 1 rounding up to upper), the value
-        is replaced by lower. lower and upper are the same point of the
-        period, so this keeps the physical point and only picks its canonical
-        representative; stepping to nextafter(upper, lower) would instead
-        move the point by one ulp. u outside [0,1] raises ValueError.
+        land in the half-open period [lower, upper): whenever the rounded map
+        gives x >= upper, lower is returned instead. Because lower + 1*(upper
+        - lower) is itself rounded, u = 1 may give either lower (when the sum
+        rounds to upper) or a value just below upper (when it rounds down);
+        u slightly below 1 may likewise round up to upper and then give lower.
+        lower and upper are the same point of the period, so the replacement
+        keeps the physical point and picks its canonical representative;
+        stepping to nextafter(upper, lower) would instead move the point by
+        one ulp. u outside [0,1] raises ValueError.
         """
         values = _real_array(u, "u")
         if values.shape[-1:] != (self.dimension,) or values.ndim not in (1, 2):

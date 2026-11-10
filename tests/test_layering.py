@@ -4,7 +4,17 @@ Static AST check of direct imports (it does not execute the code). Relative
 imports are resolved against each file's package, ``from pkg import name`` is
 expanded to both ``pkg`` and ``pkg.name`` (``name`` may be a submodule), and
 calls to ``importlib.import_module`` / ``__import__`` are flagged as
-violations because their target cannot be verified statically. Import-time
+violations because their target cannot be verified statically.
+
+Files under the physics rule (dynamics/, orbital/, simulation/, visualization/,
+src/physics/ and the root orbital_optimizer/__init__.py) must not import
+optimization/ or problems/, and must not use the dynamic-import machinery at
+all: any import of importlib, runpy or pkgutil and any exec/eval call is a
+violation, which also closes aliasing tricks such as
+``getattr(importlib, "import_module")``. The problems/ adapter layer is
+deliberately outside both rules: it may import physics and optimization.
+A static check cannot see every runtime trick (e.g. code loaded from data
+files); it guards against ordinary and accidental violations. Import-time
 behaviour of the root package is a separate matter: see docs/phase3-api.md.
 """
 import ast
@@ -14,12 +24,16 @@ from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parents[1] / "src"
 PACKAGE = SOURCE / "orbital_optimizer"
-PHYSICS_DIRS = [PACKAGE / "dynamics", PACKAGE / "orbital", PACKAGE / "simulation", SOURCE / "physics"]
+PHYSICS_DIRS = [PACKAGE / "dynamics", PACKAGE / "orbital", PACKAGE / "simulation",
+                PACKAGE / "visualization", SOURCE / "physics"]
+ROOT_INIT = PACKAGE / "__init__.py"
 OPTIMIZATION_DIR = PACKAGE / "optimization"
 OPTIMIZATION = "orbital_optimizer.optimization"
 FORBIDDEN_FOR_PHYSICS = ("orbital_optimizer.optimization", "orbital_optimizer.problems")
+DYNAMIC_IMPORT_MODULES = ("importlib", "runpy", "pkgutil")
 ALLOWED_THIRD_PARTY = {"numpy"}
 DYNAMIC = "<dynamic import>"
+EXEC = "<exec/eval call>"
 
 
 def package_of(path: Path) -> str:
@@ -54,6 +68,13 @@ def imported_names(source: str, package: str) -> list[str]:
                 function.attr if isinstance(function, ast.Attribute) else None)
             if called in ("import_module", "__import__"):
                 names.append(DYNAMIC)
+        # Any reference, not only a call, so that aliases such as ``f = eval`` are caught too.
+        referenced = node.id if isinstance(node, ast.Name) else (
+            node.attr if isinstance(node, ast.Attribute) else None)
+        if referenced in ("exec", "eval"):
+            names.append(EXEC)
+        elif referenced == "__import__":
+            names.append(DYNAMIC)
     return names
 
 
@@ -62,9 +83,10 @@ def _within(name: str, prefix: str) -> bool:
 
 
 def physics_violations(source: str, package: str) -> list[str]:
-    """Imports of optimization/problems (or dynamic imports) from a physics/simulation file."""
+    """Imports of optimization/problems, dynamic-import machinery or exec/eval in a physics-rule file."""
     return [name for name in imported_names(source, package)
-            if name == DYNAMIC or any(_within(name, prefix) for prefix in FORBIDDEN_FOR_PHYSICS)]
+            if name in (DYNAMIC, EXEC)
+            or any(_within(name, prefix) for prefix in FORBIDDEN_FOR_PHYSICS + DYNAMIC_IMPORT_MODULES)]
 
 
 def optimization_violations(source: str, package: str) -> list[str]:
@@ -101,6 +123,18 @@ class CheckerSelfTests(unittest.TestCase):
             ("import importlib\nm = importlib.import_module('orbital_optimizer.optimization')", "orbital_optimizer.orbital"),
             ("m = __import__('orbital_optimizer')", "orbital_optimizer.orbital"),
             ("from importlib import import_module\nimport_module('x')", "physics"),
+            # Bypass attempts that only the stricter physics rule catches.
+            ("from importlib import import_module as load\nload('orbital_optimizer.optimization')", "orbital_optimizer.orbital"),
+            ("import importlib as il\ngetattr(il, 'import_' + 'module')('orbital_optimizer.problems')", "orbital_optimizer.orbital"),
+            ("import importlib.util", "orbital_optimizer.simulation"),
+            ("exec('import orbital_optimizer.optimization')", "orbital_optimizer.dynamics"),
+            ("f = eval\nf('1')", "orbital_optimizer.orbital"),
+            ("load = __import__\nload('orbital_optimizer.optimization')", "orbital_optimizer.orbital"),
+            ("import runpy\nrunpy.run_module('orbital_optimizer.optimization')", "orbital_optimizer.visualization"),
+            ("import pkgutil", "orbital_optimizer"),
+            ("import builtins\nbuiltins.exec('x = 1')", "orbital_optimizer.orbital"),
+            ("from .optimization import DifferentialEvolution", "orbital_optimizer"),
+            ("from . import problems", "orbital_optimizer"),
         ]
         for source, package in cases:
             with self.subTest(source=source, package=package):
@@ -114,6 +148,8 @@ class CheckerSelfTests(unittest.TestCase):
             ("from orbital_optimizer import EARTH_MU", "physics"),
             ("from ... import dynamics", "orbital_optimizer.simulation.nested"),
             ("from scipy.integrate import solve_ivp", "orbital_optimizer.simulation"),
+            ("from .dynamics.two_body import EARTH_MU", "orbital_optimizer"),
+            ("from ..simulation.propagator import PropagationResult", "orbital_optimizer.visualization"),
         ]
         for source, package in cases:
             with self.subTest(source=source, package=package):
@@ -160,10 +196,23 @@ class LayeringTests(unittest.TestCase):
             self.assertTrue(source_files(directory), directory)
 
     def test_physics_and_simulation_do_not_import_optimization(self) -> None:
-        for directory in PHYSICS_DIRS:
-            for path in source_files(directory):
-                with self.subTest(file=str(path.relative_to(SOURCE))):
-                    self.assertEqual(physics_violations(path.read_text(encoding="utf-8"), package_of(path)), [])
+        files = [ROOT_INIT] + [path for directory in PHYSICS_DIRS for path in source_files(directory)]
+        for path in files:
+            with self.subTest(file=str(path.relative_to(SOURCE))):
+                self.assertEqual(physics_violations(path.read_text(encoding="utf-8"), package_of(path)), [])
+
+    def test_root_package_does_not_reexport_optimization_or_problems(self) -> None:
+        # Q5: the optimizer is imported from orbital_optimizer.optimization, not from the root.
+        import orbital_optimizer
+
+        exported = set(orbital_optimizer.__all__)
+        for name in ("DifferentialEvolution", "DifferentialEvolutionSettings", "Bounds", "TerminationCriteria",
+                     "OptimizationResult", "CoplanarTwoImpulseProblem", "TwoImpulsePlan",
+                     "verify_two_impulse_plan", "optimization", "problems"):
+            with self.subTest(name=name):
+                self.assertNotIn(name, exported)
+        self.assertFalse(hasattr(orbital_optimizer, "DifferentialEvolution"))
+        self.assertFalse(hasattr(orbital_optimizer, "CoplanarTwoImpulseProblem"))
 
     def test_optimization_imports_only_stdlib_numpy_and_itself(self) -> None:
         for path in source_files(OPTIMIZATION_DIR):

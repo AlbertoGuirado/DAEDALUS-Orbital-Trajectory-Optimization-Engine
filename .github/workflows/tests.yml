@@ -32,6 +32,28 @@ jobs:
       - name: Unit and analytic validation tests
         run: python -m unittest discover -s tests -v
 
+  pinned-runtime:
+    # Runs the suite against requirements-reproducible.txt (NumPy 2.3.x) so the
+    # pinned optimizer reference in tests/test_differential_evolution.py is
+    # exercised instead of skipped.
+    name: Pinned runtime / Python 3.12 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned runtime, then the project without dependency resolution
+        run: |
+          python -m pip install -r requirements-reproducible.txt
+          python -m pip install -e . --no-deps
+      - name: Unit tests including the pinned reference
+        run: python -B -m unittest discover -s tests
+
   reference-experiment:
     runs-on: ubuntu-latest
     steps:

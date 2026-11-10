@@ -196,9 +196,12 @@ def _jsonable(value: Any) -> Any:
 class OptimizationResult:
     """Outcome of one optimization run.
 
-    x_best is the best valid physical decision vector, (D,), and u_best its
-    normalized image; both are None, with f_best = +inf, when no evaluation
-    was valid. ``found_valid`` states only that a valid point was found; it
+    u_best, (D,), is the normalized point the optimizer evaluated, and x_best
+    = bounds.from_unit(u_best) is the physical vector that was passed to the
+    problem. The map is applied in that direction only: bounds.to_unit(x_best)
+    equals u_best only up to floating-point rounding, and for a periodic
+    variable it can differ by one period when from_unit wrapped upper to
+    lower. Both are None, with f_best = +inf, when no evaluation was valid. ``found_valid`` states only that a valid point was found; it
     makes no claim of optimality. ``status_counts`` maps each status value to
     its number of evaluations. ``wall_time_s`` is informative and excluded from
     reproducibility comparisons.

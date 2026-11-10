@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import math
 import platform
 import sys
@@ -80,7 +81,9 @@ class EvaluationBudget:
 
     The problem receives its own read-only copy of x; the budget keeps a
     separate private copy, so a problem that re-enables writing and mutates
-    its argument (now or later) cannot alter ``best_x``.
+    its argument (now or later) cannot alter ``best_x``. Likewise
+    ``best_evaluation`` is not the problem's object but a new Evaluation
+    built from the private x with ``copy.deepcopy`` of the metadata.
 
     Contract checks on the problem's answer:
       - not an Evaluation: TypeError;
@@ -134,7 +137,12 @@ class EvaluationBudget:
             self.best_value = evaluation.objective
             self.best_x = x
             self.best_u = np.array(u, dtype=float, copy=True)
-            self.best_evaluation = evaluation
+            # Budget-owned record: rebuilt from the private x with deep-copied metadata,
+            # so later changes to the problem's own Evaluation object cannot reach it.
+            self.best_evaluation = Evaluation(
+                x, evaluation.objective, evaluation.status, evaluation.message,
+                copy.deepcopy(dict(evaluation.metadata)),
+            )
         self._best_so_far.append(self.best_value)
         return evaluation
 

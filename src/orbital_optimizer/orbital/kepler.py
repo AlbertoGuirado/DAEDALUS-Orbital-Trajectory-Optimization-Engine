@@ -13,7 +13,7 @@ Astrodynamics and Applications, 4th ed., Sec. 2.2-2.3; Battin (1999), Sec. 4.3.
 
 import numpy as np
 
-from ..dynamics.two_body import real_array
+from ..dynamics.two_body import EARTH_MU, real_array, validate_mu
 
 _EPS: float = float(np.finfo(float).eps)
 # Bisection alone shrinks the width-4 bracket below float64 spacing in <60 steps.
@@ -77,3 +77,73 @@ def solve_kepler(mean_anomaly: float, eccentricity: float) -> float:
     e = _validate_eccentricity(eccentricity)
     reduced, turns = _reduce(float(mean))
     return _solve_reduced(reduced, e, 0.0) + 2 * np.pi * turns
+
+
+def _scalar(value: float, name: str) -> float:
+    array = real_array(value, name)
+    if array.shape != ():
+        raise ValueError(f"{name} must be a scalar")
+    return float(array)
+
+
+def true_to_eccentric_anomaly(true_anomaly: float, eccentricity: float) -> float:
+    """Eccentric anomaly E (rad) from true anomaly nu (rad), for 0<=e<1.
+
+    tan(E/2) = sqrt((1-e)/(1+e)) tan(nu/2), evaluated without the tangent as
+    E = 2*atan2(sqrt(1-e)*sin(nu/2), sqrt(1+e)*cos(nu/2)) on nu reduced to
+    [-pi,pi], so E is in [-pi,pi] there. The revolution count of nu is kept:
+    E(nu + 2*pi*k) = E(nu) + 2*pi*k (Vallado, 4th ed., Sec. 2.2). Non-finite
+    nu or e outside [0,1) raises ValueError.
+    """
+    nu = _scalar(true_anomaly, "true_anomaly")
+    e = _validate_eccentricity(eccentricity)
+    reduced, turns = _reduce(nu)
+    half = reduced / 2
+    eccentric = 2 * np.arctan2(np.sqrt(1 - e) * np.sin(half), np.sqrt(1 + e) * np.cos(half))
+    return float(eccentric) + 2 * np.pi * turns
+
+
+def true_to_mean_anomaly(true_anomaly: float, eccentricity: float) -> float:
+    """Mean anomaly M = E - e*sin(E) (rad) from true anomaly nu (rad), 0<=e<1.
+
+    E comes from ``true_to_eccentric_anomaly``; M keeps the revolution count
+    of nu, so it is the inverse of solve_kepler followed by E -> nu.
+    """
+    nu = _scalar(true_anomaly, "true_anomaly")
+    e = _validate_eccentricity(eccentricity)
+    reduced, turns = _reduce(nu)
+    eccentric = true_to_eccentric_anomaly(reduced, e)
+    return float(eccentric - e * np.sin(eccentric)) + 2 * np.pi * turns
+
+
+def elliptic_time_of_flight(
+    true_anomaly_start: float,
+    true_anomaly_end: float,
+    semi_major_axis: float,
+    eccentricity: float,
+    mu: float = EARTH_MU,
+) -> float:
+    """Time (s) to move forward on an ellipse from nu_start to the next nu_end.
+
+    dt = ((M(nu_end) - M(nu_start)) mod 2*pi) / n, n = sqrt(mu/a^3), with M
+    from ``true_to_mean_anomaly``. The result is the first arrival in
+    [0, period): whole revolutions are not counted and equal angles (mod
+    2*pi) give 0. Angles in radians, a > 0 in metres, 0<=e<1, mu in m^3/s^2.
+    Two-body Keplerian motion only. Invalid input raises ValueError; a
+    non-finite result raises RuntimeError.
+    """
+    start = _scalar(true_anomaly_start, "true_anomaly_start")
+    end = _scalar(true_anomaly_end, "true_anomaly_end")
+    a = _scalar(semi_major_axis, "semi_major_axis")
+    if a <= 0:
+        raise ValueError("semi_major_axis must be positive, in metres")
+    e = _validate_eccentricity(eccentricity)
+    gm = validate_mu(mu)
+    sweep = (true_to_mean_anomaly(_reduce(end)[0], e) - true_to_mean_anomaly(_reduce(start)[0], e)) % (2 * np.pi)
+    if sweep >= 2 * np.pi:  # a tiny negative difference can round to exactly 2*pi
+        sweep = 0.0
+    with np.errstate(over="ignore", invalid="ignore"):
+        time = float(sweep * np.sqrt(a / gm) * a)
+    if not np.isfinite(time):
+        raise RuntimeError("time of flight exceeds floating-point range")
+    return time
