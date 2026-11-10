@@ -138,8 +138,54 @@ from .coplanar_transfer import (
 )
 
 
-# Added to TANGENCY_FACTOR once per preceding coast arc, times (3+e)/(1-e) of that arc.
+# Constant of the arc term of the tangency tolerance: tolerance = K u S + C u (sum kappa) T.
+# Calibrated, not derived: see "Tangency tolerance after coast arcs" in the module docstring.
 ARC_TANGENCY_FACTOR: float = 16.0
+# Largest conditioning kappa = (3+e)/(1-e) of an arc that the problem accepts (e <= 0.996004,
+# apoapsis/periapsis <= 499.5). See "Domain restrictions" in the module docstring.
+MAX_ARC_CONDITIONING: float = 1.0e3
+# A VALID evaluation arrives within this fraction of the target radius.
+ARRIVAL_RELATIVE_TOLERANCE: float = 1.0e-9
+# Most integration steps verify_impulsive_plan will ask for (transfer plus final coast).
+VERIFICATION_MAX_STEPS: int = 1_000_000
+
+
+def arc_conditioning(eccentricity: float) -> float:
+    """kappa = (3 + e)/(1 - e), the conditioning of the analytic propagation of an elliptic arc.
+
+    It is the factor of the documented error model of simulation.kepler_propagator
+    (relative error of the semi-major axis up to 4 eps kappa); +inf for e >= 1.
+    """
+    return (3 + eccentricity) / (1 - eccentricity) if eccentricity < 1 else float("inf")
+
+
+def arc_error_scale(radius: float, final_radius: float, mu: float, tangential_speed: float,
+                    radial_speed: float, speed_before: float) -> float:
+    """T (m^4/s^2): first-order change of the reach margin Q per unit relative error of the state.
+
+    With Q = (v_t^2 + v_r^2) r2^2 - 2 mu r2^2/r + 2 mu r2 - r^2 v_t^2 at a burn
+    point of radius r and post-burn velocity (v_t, v_r):
+
+        dQ/dv_t = 2 v_t (r2^2 - r^2),  dQ/dv_r = 2 v_r r2^2,
+        dQ/dr   = 2 mu r2^2/r^2 - 2 r v_t^2.
+
+    A relative error eta of the propagated pre-burn state means dr = eta r, a
+    velocity error eta v_before in each component (the burn itself is exact)
+    and a rotation eta of the local frame, which mixes the post-burn
+    components (at most eta v_after). Hence |dQ| <= eta T with
+
+        T = 2 (v_before + v_after) (v_t |r2^2 - r^2| + |v_r| r2^2)
+            + 2 mu r2^2 / r + 2 r^2 v_t^2.
+
+    The term in v_before matters when a retrograde burn leaves a velocity much
+    smaller than the one the arc delivered (descending transfers): the
+    absolute error of the arc is then large relative to the new orbit.
+    """
+    speed_after = float(np.hypot(tangential_speed, radial_speed))
+    target2 = final_radius * final_radius
+    return float(2 * (speed_before + speed_after)
+                 * (tangential_speed * abs(target2 - radius * radius) + abs(radial_speed) * target2)
+                 + 2 * mu * target2 / radius + 2 * radius * radius * tangential_speed * tangential_speed)
 
 
 @dataclass(frozen=True, eq=False)
@@ -201,6 +247,7 @@ def verify_impulsive_plan(
     max_step: float = 60.0,
     rtol: float = 1e-10,
     atol: ArrayLike | None = None,
+    max_steps: int = VERIFICATION_MAX_STEPS,
 ) -> PlanVerification:
     """Independently propagate a plan numerically and check arrival on the target circle (RV-3.04).
 
@@ -217,12 +264,24 @@ def verify_impulsive_plan(
     message instead of raising. Local integrator tolerances do not bound the
     global error: for transfers much longer than LEO-GEO the caller must
     tighten ``rtol``/``atol`` rather than loosen the arrival tolerances.
+
+    Cost guard: both integrators advance by at most ``max_step`` per step, so
+    the transfer and the final coast need at least (t_N + T_2) / max_step
+    steps, T_2 the period of the target orbit. If that number exceeds
+    ``max_steps`` (an integer >= 1) nothing is propagated and the
+    verification fails saying so: a plan that was not verified is never
+    reported as verified, and the call always terminates.
     """
     if not isinstance(plan, ImpulsivePlan):
         raise ValueError("plan must be an ImpulsivePlan")
     limits = real_array([radius_tolerance_m, eccentricity_tolerance], "tolerances")
     if np.any(limits <= 0):
         raise ValueError("verification tolerances must be positive")
+    if isinstance(max_steps, bool) or not isinstance(max_steps, (int, np.integer)) or max_steps < 1:
+        raise ValueError("max_steps must be an integer >= 1")
+    step = real_array(max_step, "max_step")
+    if step.shape != () or not step > 0:
+        raise ValueError("max_step must be a positive finite scalar")
     radius_tol, ecc_tol = float(limits[0]), float(limits[1])
     r2, gm = plan.final_radius, plan.mu
     options = {"method": method, "max_step": max_step, "rtol": rtol, "atol": atol}
@@ -235,6 +294,11 @@ def verify_impulsive_plan(
 
     if plan.transfer_time <= 0:
         return failed("the plan has no transfer arc: its last burn is at t = 0")
+    needed = (plan.transfer_time + orbital_period(r2, gm)) / float(step)
+    metrics["minimum_integration_steps"] = float(np.ceil(needed))
+    if needed > max_steps:
+        return failed(f"not verified: the propagation needs at least {needed:.3g} steps of {float(step):g} s "
+                      f"(limit {int(max_steps)}); raise max_step with tighter rtol/atol, or raise max_steps")
     try:
         final = propagate_with_impulses(plan.initial_state, plan.impulses(), plan.transfer_time, gm, **options)
     except (ValueError, RuntimeError) as exc:
@@ -293,17 +357,21 @@ class CoplanarMultiImpulseProblem:
 
     Decision x = (dv_1, alpha_1, [M_k, dv_k, alpha_k]); objective J in m/s.
     r1 != r2, both > 0, in metres; mu in m^3/s^2. Equal radii raise
-    ValueError; a non-finite reference or bound raises RuntimeError. The
-    counters ``captured_value_errors`` and ``captured_runtime_errors``
-    accumulate over the lifetime of the instance.
+    ValueError; a non-finite reference or bound raises RuntimeError. Three
+    counters accumulate over the lifetime of the instance:
+    ``captured_value_errors`` and ``captured_runtime_errors`` (exceptions of
+    the physics calls turned into invalid evaluations) and
+    ``arrival_failures`` (candidates rejected because the propagated arrival
+    missed the target radius). In normal use the three stay at zero.
     """
 
     def __init__(self, initial_radius: float, final_radius: float, mu: float = EARTH_MU, *,
                  impulses: int = 2) -> None:
         r1, r2 = _radius(initial_radius, "initial_radius"), _radius(final_radius, "final_radius")
         gm = validate_mu(mu)
-        if r1 == r2:
-            raise ValueError("initial and final radii must differ")
+        if abs(r1 - r2) <= ARRIVAL_RELATIVE_TOLERANCE * r2:
+            raise ValueError("initial and final radii must differ by more than the arrival tolerance "
+                             f"({ARRIVAL_RELATIVE_TOLERANCE:g} of the final radius)")
         if isinstance(impulses, bool) or not isinstance(impulses, (int, np.integer)) or impulses < 2:
             raise ValueError("impulses must be an integer >= 2")
         reference = _hohmann_reference(r1, r2, gm)
@@ -335,6 +403,7 @@ class CoplanarMultiImpulseProblem:
         self._initial_state.setflags(write=False)
         self.captured_value_errors = 0
         self.captured_runtime_errors = 0
+        self.arrival_failures = 0
 
     @property
     def initial_state(self) -> NDArray[np.float64]:
@@ -374,7 +443,7 @@ class CoplanarMultiImpulseProblem:
         clock = 0.0
         burns: list[_Burn] = []
         low = high = self.initial_radius
-        tangency_factor = TANGENCY_FACTOR
+        conditioning = 0.0            # sum of kappa over the coast arcs flown so far
         index = 0
         for k in range(1, self.impulses):
             if k > 1:
@@ -383,17 +452,18 @@ class CoplanarMultiImpulseProblem:
                 elements = state_to_elements(state, gm)
                 a, e = elements.semi_major_axis, elements.eccentricity
                 coast = float(sweep * np.sqrt(a / gm) * a)
-                if not coast > 0:
+                if not clock + coast > clock:
                     return _Failure(EvaluationStatus.INVALID_DOMAIN,
                                     "coincident impulses: the coast between two burns is zero")
                 arc_low, arc_high = radius_extrema_on_arc(elements.true_anomaly, coast, a, e, gm)
                 low, high = min(low, arc_low), max(high, arc_high)
                 state = propagate_kepler(state, coast, gm).final_state
                 clock += coast
-                tangency_factor += ARC_TANGENCY_FACTOR * (3 + e) / (1 - e)
+                conditioning += arc_conditioning(e)
             magnitude, alpha = float(point[index]), float(point[index + 1])
             index += 2
             radial_hat, transverse_hat, radius = _local_frame(state)
+            speed_before = float(np.hypot(state[3], state[4]))
             burn = magnitude * (np.sin(alpha) * radial_hat + np.cos(alpha) * transverse_hat)
             state[3:] = state[3:] + burn
             burns.append(_Burn(clock, burn))
@@ -409,14 +479,27 @@ class CoplanarMultiImpulseProblem:
                 return _Failure(EvaluationStatus.INVALID_DOMAIN,
                                 f"orbit after burn {k} is radial or retrograde",
                                 {"tangential_speed_m_s": tangential})
+            # e^2 = 1 + 2 eps h^2 / mu^2: every arc the vehicle flies must be well conditioned.
+            momentum = radius * tangential
+            eccentricity = float(np.sqrt(max(0.0, 1 + 2 * energy * momentum * momentum / (gm * gm))))
+            if not arc_conditioning(eccentricity) <= MAX_ARC_CONDITIONING:
+                return _Failure(EvaluationStatus.INVALID_DOMAIN,
+                                f"orbit after burn {k} is too close to parabolic for this problem "
+                                f"(conditioning above {MAX_ARC_CONDITIONING:g})",
+                                {"arc_conditioning": arc_conditioning(eccentricity), "eccentricity": eccentricity})
 
-        q, s = reach_margin(radius, r2, gm, tangential, radial)
-        if q < -tangency_factor * UNIT_ROUNDOFF * s:
-            return _Failure(EvaluationStatus.INVALID_DOMAIN, "transfer orbit does not reach the target radius",
-                            {"reach_margin_relative": q / s, "tangency_factor": tangency_factor})
-        if radius == r2:
+        if abs(radius - r2) <= ARRIVAL_RELATIVE_TOLERANCE * r2:
             return _Failure(EvaluationStatus.INVALID_DOMAIN,
-                            "the last free burn is on the target radius: the crossing is undefined")
+                            "coincident impulses: the last free burn is on the target radius",
+                            {"burn_radius_residual_m": radius - r2})
+        q, s = reach_margin(radius, r2, gm, tangential, radial)
+        scale = arc_error_scale(radius, r2, gm, tangential, radial, speed_before)
+        tolerance = TANGENCY_FACTOR * UNIT_ROUNDOFF * s + ARC_TANGENCY_FACTOR * UNIT_ROUNDOFF * conditioning * scale
+        reach = {"reach_margin_relative": q / s, "tangency_factor": tolerance / (UNIT_ROUNDOFF * s),
+                 "tangency_tolerance_relative": tolerance / s, "arc_conditioning": conditioning,
+                 "arc_error_scale_relative": scale / s}
+        if q < -tolerance:
+            return _Failure(EvaluationStatus.INVALID_DOMAIN, "transfer orbit does not reach the target radius", reach)
         elements = state_to_elements(state, gm)
         a, e, nu = elements.semi_major_axis, elements.eccentricity, elements.true_anomaly
         if not e > 0:
@@ -427,10 +510,21 @@ class CoplanarMultiImpulseProblem:
         tau = elliptic_time_of_flight(nu, crossing, a, e, gm)
         if not tau > 0:
             raise RuntimeError("non-positive time of flight to the target radius")
+        if not clock + tau > clock:
+            return _Failure(EvaluationStatus.INVALID_DOMAIN,
+                            "coincident impulses: the arrival is not later than the last free burn", reach)
         arc_low, arc_high = radius_extrema_on_arc(nu, tau, a, e, gm)
         low, high = min(low, arc_low), max(high, arc_high)
         arrival = propagate_kepler(state, tau, gm).final_state
         radial_hat, transverse_hat, arrival_radius = _local_frame(arrival)
+        if not abs(arrival_radius - r2) <= ARRIVAL_RELATIVE_TOLERANCE * r2:
+            # The candidate passed the predicates but the propagated arrival is not on the target
+            # circle: the last burn would not circularize there. It is not a transfer.
+            self.arrival_failures += 1
+            return _Failure(EvaluationStatus.NUMERICAL_FAILURE,
+                            f"the propagated arrival misses the target radius by {arrival_radius - r2:.3g} m "
+                            f"(tolerance {ARRIVAL_RELATIVE_TOLERANCE * r2:.3g} m)",
+                            {**reach, "arrival_radius_residual_m": arrival_radius - r2})
         final_burn = np.sqrt(gm / r2) * transverse_hat - arrival[3:]
         burns.append(_Burn(clock + tau, final_burn))
         vectors = np.array([burn.vector for burn in burns])
@@ -449,8 +543,7 @@ class CoplanarMultiImpulseProblem:
             "final_arc_eccentricity": e,
             "arrival_radius_residual_m": arrival_radius - r2,
             "tangency_clip": float(max(0.0, abs(cos_crossing) - 1.0)),
-            "reach_margin_relative": q / s,
-            "tangency_factor": tangency_factor,
+            **reach,
             "reference_delta_v_m_s": self.reference.total_delta_v,
             "reference_transfer_time_s": self.reference.transfer_time,
             "impulses": self.impulses,

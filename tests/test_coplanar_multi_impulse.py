@@ -207,8 +207,9 @@ class TwoImpulseTests(unittest.TestCase):
 
 class ThreeImpulseTests(unittest.TestCase):
     def test_bielliptic_decision_reproduces_the_closed_form(self) -> None:
-        # (r2/r1, rb/max(r1, r2)): ascending and descending, moderate and high eccentricity.
-        for ratio, factor in ((5.0, 8.0), (20.0, 3.0), (20.0, 60.0), (0.2, 3.0), (0.05, 2.0)):
+        # (r2/r1, rb/max(r1, r2)): ascending and descending, moderate and high eccentricity
+        # (kappa of the first arc stays under MAX_ARC_CONDITIONING for every case here).
+        for ratio, factor in ((5.0, 8.0), (20.0, 3.0), (20.0, 20.0), (0.2, 3.0), (0.05, 2.0)):
             with self.subTest(ratio=ratio, factor=factor):
                 r2 = ratio * LEO
                 rb = factor * max(LEO, r2)
@@ -231,14 +232,18 @@ class ThreeImpulseTests(unittest.TestCase):
                 self.assertAlmostEqual(meta["maximum_radius_m"] / rb, 1.0, delta=1e-10)
                 self.assertAlmostEqual(meta["minimum_radius_m"] / min(LEO, r2), 1.0, delta=1e-10)
                 first_arc_eccentricity = (rb - LEO) / (rb + LEO)
+                # tangency_factor = K + C * kappa * (T/S), with T/S = arc_error_scale_relative
+                # (the state-error amplification of the burn point, not just the arc conditioning).
+                self.assertAlmostEqual(meta["arc_conditioning"],
+                                       (3 + first_arc_eccentricity) / (1 - first_arc_eccentricity), places=9)
                 self.assertAlmostEqual(
                     meta["tangency_factor"],
-                    TANGENCY_FACTOR + ARC_TANGENCY_FACTOR * (3 + first_arc_eccentricity) / (1 - first_arc_eccentricity),
+                    TANGENCY_FACTOR + ARC_TANGENCY_FACTOR * meta["arc_conditioning"] * meta["arc_error_scale_relative"],
                     delta=1e-6 * meta["tangency_factor"])
                 self.assertEqual((problem.captured_value_errors, problem.captured_runtime_errors), (0, 0))
 
     def test_three_impulses_beat_hohmann_above_the_second_threshold(self) -> None:
-        ratio, rb = 20.0, 60.0 * 20.0 * LEO
+        ratio, rb = 20.0, 20.0 * 20.0 * LEO
         problem = CoplanarMultiImpulseProblem(LEO, ratio * LEO, impulses=3)
         evaluation = problem.evaluate(problem.bielliptic_decision(rb))
         hohmann = hohmann_transfer(LEO, ratio * LEO).total_delta_v
