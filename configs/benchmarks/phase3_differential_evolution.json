@@ -1,0 +1,34 @@
+{
+  "schema": "daedalus.benchmark/1",
+  "name": "phase3-differential-evolution",
+  "description": "Phase 3 closure benchmark of DE/rand/1/bin@1 with its literature defaults (NP = 10 D, F = 0.5, CR = 0.9). Scenarios, budgets, seeds, thresholds and acceptance criteria were fixed on 2026-11-10, before the first execution. Test functions (RV-3.02): standard forms on asymmetric boxes, so the optimum is not the box centre; budget 10^4 D evaluations and accuracy level 1e-8, the convention of the CEC 2005 real-parameter benchmark (the functions here are not shifted or rotated, so results are not comparable with that suite). Transfers (RV-3.01, RV-3.04): coplanar circular orbits with the Hohmann transfer as reference; budget 10^3 D evaluations, a tenth of the function budget because each evaluation propagates a trajectory; success threshold 1 m/s, the practical convergence threshold of the Phase 3 design; a run better than the reference by more than 1e-6 m/s is an anomaly.",
+  "seeds": {"first": 0, "count": 30},
+  "algorithms": [
+    {"id": "de", "type": "differential_evolution", "settings": {}}
+  ],
+  "scenarios": [
+    {"id": "sphere-5d", "type": "function", "function": "sphere", "dimension": 5,
+     "lower": -2.56, "upper": 5.12, "max_evaluations": 50000, "success_threshold": 1e-8},
+    {"id": "rosenbrock-5d", "type": "function", "function": "rosenbrock", "dimension": 5,
+     "lower": -2.048, "upper": 4.096, "max_evaluations": 50000, "success_threshold": 1e-8},
+    {"id": "rastrigin-5d", "type": "function", "function": "rastrigin", "dimension": 5,
+     "lower": -2.56, "upper": 5.12, "max_evaluations": 50000, "success_threshold": 1e-8},
+    {"id": "leo-geo", "type": "coplanar_transfer",
+     "initial_radius_m": 6678000.0, "final_radius_m": 42164000.0, "impulses": 2,
+     "max_evaluations": 2000, "success_threshold_m_s": 1.0},
+    {"id": "leo-meo", "type": "coplanar_transfer",
+     "initial_radius_m": 6678000.0, "final_radius_m": 26560000.0, "impulses": 2,
+     "max_evaluations": 2000, "success_threshold_m_s": 1.0},
+    {"id": "geo-leo", "type": "coplanar_transfer",
+     "initial_radius_m": 42164000.0, "final_radius_m": 6678000.0, "impulses": 2,
+     "max_evaluations": 2000, "success_threshold_m_s": 1.0},
+    {"id": "leo-geo-3-impulse", "type": "coplanar_transfer",
+     "initial_radius_m": 6678000.0, "final_radius_m": 42164000.0, "impulses": 3,
+     "max_evaluations": 5000, "success_threshold_m_s": 1.0}
+  ],
+  "acceptance": {
+    "max_anomalies": 0,
+    "require_verification": true,
+    "minimum_success_rate": {"leo-geo": {"de": 0.9}}
+  }
+}
