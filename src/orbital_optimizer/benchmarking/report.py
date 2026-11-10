@@ -48,6 +48,17 @@ def _cell(records: Sequence[RunRecord], band_points: int) -> dict[str, Any]:
     }
     gaps = [record.gap for record in records if record.gap is not None]
     cell["gap"] = summarize(gaps) if len(gaps) == len(records) else None
+    if any(record.feasible is not None for record in records):
+        # Constrained scenario: how many runs ended with a feasible solution, and how far the others stayed.
+        infeasible = [record.least_violation for record in records
+                      if not record.feasible and record.least_violation is not None]
+        cell["constraints"] = {
+            "handling": records[0].constraint_handling,
+            "runs_with_feasible_solution": sum(bool(record.feasible) for record in records),
+            "least_violation_of_runs_without_one": summarize(infeasible) if infeasible else None,
+        }
+    else:
+        cell["constraints"] = None
     if records[0].success is None:
         cell["success"] = None
         cell["evaluations_to_success"] = None

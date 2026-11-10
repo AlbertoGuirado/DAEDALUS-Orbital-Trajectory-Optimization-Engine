@@ -11,15 +11,13 @@ from typing import Any, Protocol, runtime_checkable
 import numpy as np
 from numpy.typing import NDArray
 
+from .constraint_handling import ConstraintHandling, FeasibilityRules, Key
 from .problem import Bounds, Evaluation, Problem
 from .result import (
     STATUS_ORDER, OptimizationHistory, OptimizationResult, TerminationCriteria, TerminationReason,
 )
 
 BIT_GENERATOR: str = "PCG64"
-
-# Ranking key of one evaluation: lexicographic, lower is better.
-Key = tuple[int, float]
 
 
 @runtime_checkable
@@ -82,7 +80,20 @@ class EvaluationBudget:
 
     Each call maps u in [0,1]^D to x = lower + u*(upper - lower), validates x,
     calls ``problem.evaluate`` and records status and best-so-far value. The
-    best is the first evaluated point with the lowest valid objective.
+    best is the first evaluated point with the lowest *feasible* objective;
+    for a problem without constraints every valid point is feasible, so it is
+    the lowest valid objective.
+
+    Constraints (Phase 4). ``handling`` ranks candidates during the search
+    (``key``); it defaults to ``problem.constraint_handling`` when the
+    problem declares one and to Deb's feasibility rules otherwise. Whatever
+    the strategy, the reported best is chosen by feasibility: ``best_*`` hold
+    the best feasible point and ``least_violation_*`` the valid infeasible
+    point with the smallest total violation, kept separately so that an
+    infeasible point is never presented as a solution. ``best_value`` -- and
+    with it the convergence history, the target criterion and the stagnation
+    count -- refers to feasible points only. ``constrained`` becomes True as
+    soon as one evaluation carries a constraint violation.
 
     The problem receives its own read-only copy of x; the budget keeps a
     separate private copy, so a problem that re-enables writing and mutates
@@ -99,18 +110,33 @@ class EvaluationBudget:
     contract check raises before anything is recorded.
     """
 
-    def __init__(self, problem: Problem, max_evaluations: int) -> None:
+    def __init__(self, problem: Problem, max_evaluations: int,
+                 handling: ConstraintHandling | None = None) -> None:
         self.problem = problem
         self.bounds = validate_problem(problem)
         if isinstance(max_evaluations, bool) or not isinstance(max_evaluations, (int, np.integer)) or max_evaluations < 1:
             raise ValueError("max_evaluations must be an integer >= 1")
         self.max_evaluations = int(max_evaluations)
+        if handling is None:
+            handling = getattr(problem, "constraint_handling", None)
+        if handling is None:
+            handling = FeasibilityRules()
+        if not callable(getattr(handling, "key", None)) or not callable(getattr(handling, "describe", None)):
+            raise TypeError("constraint handling must define key(evaluation) and describe()")
+        self.handling: ConstraintHandling = handling
+        self.constrained: bool = False
         self._status: list[int] = []
         self._best_so_far: list[float] = []
+        self._violation: list[float] = []
+        self.valid_count: int = 0
         self.best_value: float = math.inf
         self.best_x: NDArray[np.float64] | None = None
         self.best_u: NDArray[np.float64] | None = None
         self.best_evaluation: Evaluation | None = None
+        self.least_violation: float = math.inf
+        self.least_violation_x: NDArray[np.float64] | None = None
+        self.least_violation_u: NDArray[np.float64] | None = None
+        self.least_violation_evaluation: Evaluation | None = None
 
     @property
     def used(self) -> int:
@@ -138,34 +164,70 @@ class EvaluationBudget:
         if not np.array_equal(evaluation.x, x):
             raise ValueError("evaluation.x differs from the evaluated decision vector")
         self._status.append(STATUS_ORDER.index(evaluation.status))
-        if evaluation.is_valid and evaluation.objective < self.best_value:
+        if evaluation.is_constrained:
+            self.constrained = True
+        if evaluation.is_valid:
+            self.valid_count += 1
+        violation = math.nan if not evaluation.is_valid else (evaluation.constraint_violation or 0.0)
+        self._violation.append(violation)
+        if evaluation.is_feasible and evaluation.objective < self.best_value:
             self.best_value = evaluation.objective
             self.best_x = x
             self.best_u = np.array(u, dtype=float, copy=True)
-            # Budget-owned record: rebuilt from the private x with deep-copied metadata,
-            # so later changes to the problem's own Evaluation object cannot reach it.
-            self.best_evaluation = Evaluation(
-                x, evaluation.objective, evaluation.status, evaluation.message,
-                copy.deepcopy(dict(evaluation.metadata)),
-            )
+            self.best_evaluation = self._own(x, evaluation)
+        elif evaluation.is_valid and not evaluation.is_feasible and violation < self.least_violation:
+            self.least_violation = violation
+            self.least_violation_x = x
+            self.least_violation_u = np.array(u, dtype=float, copy=True)
+            self.least_violation_evaluation = self._own(x, evaluation)
         self._best_so_far.append(self.best_value)
         return evaluation
 
-    def key(self, evaluation: Evaluation) -> Key:
-        """Ranking key shared by every optimizer: (0, objective) if VALID, else (1, 0.0).
+    @staticmethod
+    def _own(x: NDArray[np.float64], evaluation: Evaluation) -> Evaluation:
+        """Budget-owned record: rebuilt from the private x with deep-copied metadata,
 
-        Keys compare lexicographically and lower is better, so a valid point
-        always beats an invalid one and invalid points are mutually tied. It
-        is the comparison of DE's selection (differential_evolution._trial_wins)
-        in key form; algorithms that only compare candidates use it directly.
+        so later changes to the problem's own Evaluation object cannot reach it.
         """
-        return (0, evaluation.objective) if evaluation.is_valid else (1, 0.0)
+        return Evaluation(
+            x, evaluation.objective, evaluation.status, evaluation.message,
+            copy.deepcopy(dict(evaluation.metadata)),
+            evaluation.constraint_violation, dict(evaluation.constraints),
+        )
+
+    def key(self, evaluation: Evaluation) -> Key:
+        """Ranking key shared by every optimizer, given by the constraint handling.
+
+        Keys compare lexicographically and lower is better. Without
+        constraints it orders valid points by objective and puts invalid
+        points last, mutually tied -- the comparison of DE's selection
+        (differential_evolution._trial_wins) in key form. With constraints
+        the strategy decides (constraint_handling).
+        """
+        return self.handling.key(evaluation)
 
     def status_codes(self) -> NDArray[np.int8]:
         return np.array(self._status, dtype=np.int8)
 
     def best_so_far(self) -> NDArray[np.float64]:
         return np.array(self._best_so_far, dtype=float)
+
+    def violations(self) -> NDArray[np.float64]:
+        """Total normalized violation of each evaluation: 0 if feasible, NaN if not valid."""
+        return np.array(self._violation, dtype=float)
+
+    def constraint_record(self) -> dict[str, Any]:
+        """Keyword arguments of OptimizationResult for the constraint fields; empty without constraints."""
+        if not self.constrained:
+            return {}
+        return {
+            "constraint_handling": self.handling.describe(),
+            "found_feasible": self.best_evaluation is not None,
+            "least_violation": None if self.least_violation_evaluation is None else self.least_violation,
+            "x_least_violation": self.least_violation_x,
+            "u_least_violation": self.least_violation_u,
+            "least_violation_evaluation": self.least_violation_evaluation,
+        }
 
     def status_counts(self) -> dict[str, int]:
         codes = self.status_codes()
@@ -235,24 +297,35 @@ class GenerationLog:
             generation_valid=self.valid,
             generation_spread=self.spread,
             populations=np.array(self.populations) if self.record_population else None,
+            violation=self.budget.violations() if self.budget.constrained else None,
         )
+
+
+def run_message(budget: EvaluationBudget, reason: TerminationReason, generations: int) -> str:
+    """One-line outcome of a run; it names feasibility only when the problem has constraints."""
+    head = f"stopped by {reason.value} after {budget.used} evaluations and {generations} generations; "
+    if not budget.constrained:
+        return head + ("best valid objective recorded" if budget.best_evaluation is not None
+                       else "no valid evaluation found")
+    if budget.best_evaluation is not None:
+        return head + "best feasible objective recorded"
+    if budget.least_violation_evaluation is not None:
+        return head + f"no feasible point found (least total violation {budget.least_violation:.6g})"
+    return head + "no valid evaluation found"
 
 
 def finish_run(*, problem: Problem, budget: EvaluationBudget, log: GenerationLog,
                termination: TerminationCriteria, reason: TerminationReason, generations: int,
                seed: int, algorithm: str, settings: dict[str, Any], wall_time_s: float) -> OptimizationResult:
     """Assemble the OptimizationResult of a finished run from its budget and log."""
-    found = budget.best_evaluation is not None
-    message = (f"stopped by {reason.value} after {budget.used} evaluations and {generations} generations; "
-               + ("best valid objective recorded" if found else "no valid evaluation found"))
     return OptimizationResult(
         x_best=budget.best_x,
         u_best=budget.best_u,
         f_best=budget.best_value,
         best_evaluation=budget.best_evaluation,
-        found_valid=found,
+        found_valid=budget.valid_count > 0,
         termination_reason=reason,
-        message=message,
+        message=run_message(budget, reason, generations),
         nfev=budget.used,
         status_counts=budget.status_counts(),
         generations=generations,
@@ -264,6 +337,7 @@ def finish_run(*, problem: Problem, budget: EvaluationBudget, log: GenerationLog
         environment=environment_info(),
         wall_time_s=wall_time_s,
         history=log.history(),
+        **budget.constraint_record(),
     )
 
 

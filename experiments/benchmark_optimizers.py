@@ -35,8 +35,8 @@ from typing import Any
 import numpy as np
 
 from orbital_optimizer.benchmarking import (
-    RunRecord, build_optimizer, build_scenario, evaluate_acceptance, records_to_rows, run_benchmark,
-    run_once, summarize_benchmark, validate_config,
+    RunRecord, build_scenario, evaluate_acceptance, records_to_rows, run_benchmark, run_configured,
+    summarize_benchmark, validate_config,
 )
 from orbital_optimizer.constants import EARTH_EQUATORIAL_RADIUS, EARTH_MU
 from orbital_optimizer.optimization.result import jsonable
@@ -66,12 +66,10 @@ def check_reproducibility(config: dict[str, Any], records: list[RunRecord]) -> d
     reference = {(record.scenario, record.algorithm, record.seed): record for record in records}
     different = []
     for scenario_config in scenarios:
-        scenario = build_scenario(scenario_config)
         for algorithm in algorithms:
-            optimizer = build_optimizer({key: value for key, value in algorithm.items() if key != "id"})
-            repeated = run_once(scenario, algorithm["id"], optimizer, seeds[0])
-            if not _same_run(repeated, reference[(scenario.id, algorithm["id"], seeds[0])]):
-                different.append(f"{scenario.id}/{algorithm['id']}")
+            repeated = run_configured(scenario_config, algorithm, seeds[0])
+            if not _same_run(repeated, reference[(repeated.scenario, algorithm["id"], seeds[0])]):
+                different.append(f"{repeated.scenario}/{algorithm['id']}")
     checked = len(scenarios) * len(algorithms)
     return {"seed": seeds[0], "checked": checked, "identical": checked - len(different), "different": different,
             "passed": not different,
@@ -89,6 +87,7 @@ def scenario_table(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
             "max_evaluations": scenario.max_evaluations, "reference": scenario.reference,
             "success_threshold": scenario.success_threshold, "lower_threshold": scenario.lower_threshold,
             "verified_by_propagation": scenario.verifier is not None,
+            "expect_infeasible": scenario.expect_infeasible,
         }
     return table
 

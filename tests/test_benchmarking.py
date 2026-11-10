@@ -229,6 +229,100 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(record.metrics, {})
 
 
+VEHICLE = {"dry_mass_kg": 500.0, "propellant_mass_kg": 2500.0, "max_thrust_n": 400.0, "specific_impulse_s": 320.0}
+TIME_LIMITED = {"id": "time-limited", "type": "constrained_transfer", "initial_radius_m": LEO, "final_radius_m": GEO,
+                "max_evaluations": 400, "spacecraft": VEHICLE,
+                "limits": {"max_duration_s": 0.8 * hohmann_transfer(LEO, GEO).transfer_time},
+                "reference": {"type": "time_limited"}, "success_threshold_m_s": 500.0, "lower_threshold_m_s": 1e-3}
+STARVED = {"id": "starved", "type": "constrained_transfer", "initial_radius_m": LEO, "final_radius_m": GEO,
+           "max_evaluations": 300, "spacecraft": VEHICLE | {"propellant_mass_kg": 1000.0}, "limits": {},
+           "reference": {"type": "infeasible"}}
+STRATEGIES = [
+    {"id": "de-rules", "type": "differential_evolution", "constraint_handling": {"type": "feasibility_rules"}},
+    {"id": "de-death", "type": "differential_evolution", "constraint_handling": {"type": "death_penalty"}},
+    {"id": "de-penalty", "type": "differential_evolution",
+     "constraint_handling": {"type": "static_penalty", "coefficient": 1.0e6, "rationale": "test value"}},
+]
+
+
+class ConstrainedBenchmarkTests(unittest.TestCase):
+    """Phase 4 in the benchmark: constrained scenarios and one handling strategy per algorithm (RF-4.10)."""
+
+    def test_constrained_scenarios_and_their_references(self) -> None:
+        limited = build_scenario(TIME_LIMITED)
+        self.assertGreater(limited.reference, hohmann_transfer(LEO, GEO).total_delta_v + 100.0)
+        self.assertFalse(limited.expect_infeasible)
+        self.assertIn("propellant_required_kg", limited.metrics)
+        unbound = build_scenario(TIME_LIMITED | {"id": "budget", "limits": {"max_delta_v_m_s": 4500.0},
+                                                 "reference": {"type": "hohmann"}})
+        self.assertEqual(unbound.reference, hohmann_transfer(LEO, GEO).total_delta_v)
+        starved = build_scenario(STARVED)
+        self.assertEqual((starved.reference, starved.expect_infeasible), (None, True))
+        for change in ({"reference": {"type": "lambert"}}, {"spacecraft": {"dry_mass_kg": 1.0}},
+                       {"limits": {"max_speed": 1.0}}, {"limits": {}},      # time_limited needs max_duration_s
+                       {"impulses": 3}, {"commanded_thrust_n": -1.0}, {"verification": {"tolerance": 1.0}},
+                       {"spacecraft": VEHICLE | {"dry_mass_kg": -5.0}}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                build_scenario(TIME_LIMITED | change)
+        without_reference = dict(TIME_LIMITED)
+        del without_reference["reference"]
+        with self.assertRaises(ValueError):
+            build_scenario(without_reference)
+
+    def test_handling_is_part_of_the_algorithm_entry(self) -> None:
+        from orbital_optimizer.benchmarking import build_handling, run_configured
+        from orbital_optimizer.optimization import DeathPenalty, StaticPenalty
+
+        self.assertIsNone(build_handling({"type": "differential_evolution"}))
+        self.assertIsInstance(build_handling(STRATEGIES[1]), DeathPenalty)
+        penalty = build_handling(STRATEGIES[2])
+        self.assertIsInstance(penalty, StaticPenalty)
+        self.assertEqual(penalty.coefficient, 1.0e6)
+        with self.assertRaises(ValueError):
+            build_optimizer({"type": "differential_evolution", "constraint_handling": {"type": "barrier"}})
+        names = {entry["id"]: run_configured(TIME_LIMITED, entry, 0).constraint_handling for entry in STRATEGIES}
+        self.assertEqual(names, {"de-rules": "feasibility-rules", "de-death": "death-penalty", "de-penalty": "static-penalty"})
+        default = run_configured(TIME_LIMITED, {"id": "de", "type": "differential_evolution"}, 0)
+        self.assertEqual(default.constraint_handling, "feasibility-rules")
+
+    def test_constrained_runs_are_verified_and_classified(self) -> None:
+        settings = config(algorithms=STRATEGIES, scenarios=[TIME_LIMITED, STARVED], count=2)
+        records = run_benchmark(settings)
+        reference = build_scenario(TIME_LIMITED).reference
+        for record in records:
+            with self.subTest(scenario=record.scenario, algorithm=record.algorithm, seed=record.seed):
+                self.assertIsNotNone(record.feasible)
+                self.assertFalse(record.anomaly)
+                if record.scenario == "starved":
+                    # 2132 kg of propellant are needed and 1000 kg are on board: nothing is feasible.
+                    self.assertEqual((record.feasible, record.x_best, record.f_best), (False, None, math.inf))
+                    self.assertTrue(record.success)                      # reporting infeasibility is the right outcome
+                    self.assertIsNone(record.verification)
+                    if record.found_valid:
+                        self.assertGreater(record.least_violation, 0.0)
+                elif record.feasible:
+                    self.assertGreaterEqual(record.f_best, reference - 1e-3)
+                    self.assertTrue(record.verification["constraints_feasible"], record.verification["message"])
+                    self.assertTrue(record.verification["arrival_passed"])
+                    self.assertEqual(record.verification["constraint_relative_tolerance"], 1e-6)
+                    self.assertGreater(record.metrics["propellant_required_kg"], 2132.0)
+                else:
+                    self.assertEqual((record.success, record.f_best), (False, math.inf))
+        summary = summarize_benchmark(settings, records)
+        cell = summary["scenarios"]["starved"]["de-rules"]
+        self.assertEqual(cell["constraints"]["runs_with_feasible_solution"], 0)
+        self.assertEqual(cell["constraints"]["handling"], "feasibility-rules")
+        self.assertEqual(cell["success"]["rate"], 1.0)
+        self.assertIsNone(cell["gap"])
+        self.assertEqual(summary["scenarios"]["time-limited"]["de-death"]["constraints"]["handling"], "death-penalty")
+        rows = records_to_rows(records)
+        self.assertIn("feasible", rows[0])
+        self.assertIn("least_violation", rows[0])
+        unconstrained = run_benchmark(config(count=1))
+        self.assertTrue(all(record.feasible is None and record.constraint_handling is None for record in unconstrained))
+        self.assertIsNone(summarize_benchmark(config(count=1), unconstrained)["scenarios"]["leo-geo"]["de"]["constraints"])
+
+
 class ReportTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -394,7 +488,10 @@ class ExperimentTests(unittest.TestCase):
                 scenarios, algorithms, seeds = validate_config(settings)
                 self.assertGreaterEqual(len(seeds), 30)                       # RF-6A.02
                 table = scenario_table(settings)
-                self.assertTrue(all(row["reference"] is not None for row in table.values()))
+                # Every scenario has a criterion fixed in advance: a reference, or the
+                # declared expectation that no feasible solution exists.
+                self.assertTrue(all((row["reference"] is not None) != row["expect_infeasible"]
+                                    for row in table.values()))
                 evaluate_acceptance(settings.get("acceptance"), {"scenarios": {
                     scenario["id"]: {algorithm["id"]: {"anomalies": 0, "verification": None,
                                                        "success": {"rate": 1.0, "wilson_95": [1.0, 1.0]}}

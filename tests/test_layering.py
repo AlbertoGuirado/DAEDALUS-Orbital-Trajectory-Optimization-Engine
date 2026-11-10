@@ -25,10 +25,10 @@ from pathlib import Path
 SOURCE = Path(__file__).resolve().parents[1] / "src"
 PACKAGE = SOURCE / "orbital_optimizer"
 PHYSICS_DIRS = [PACKAGE / "dynamics", PACKAGE / "orbital", PACKAGE / "simulation",
-                PACKAGE / "visualization", SOURCE / "physics"]
+                PACKAGE / "visualization", PACKAGE / "constraints", SOURCE / "physics"]
 ROOT_INIT = PACKAGE / "__init__.py"
-# Leaf modules of the physics layer that live directly in the package root.
-PHYSICS_MODULES = [PACKAGE / "constants.py"]
+# Modules of the physics layer that live directly in the package root.
+PHYSICS_MODULES = [PACKAGE / "constants.py", PACKAGE / "spacecraft.py"]
 OPTIMIZATION_DIR = PACKAGE / "optimization"
 OPTIMIZATION = "orbital_optimizer.optimization"
 # Layers above the physics, lowest first. A layer may import the ones before it, never the ones after.

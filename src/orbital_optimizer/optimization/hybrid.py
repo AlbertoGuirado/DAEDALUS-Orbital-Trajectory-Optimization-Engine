@@ -18,7 +18,9 @@ only; the local phase stops by budget or target. If the global phase reaches
 the target, or fewer than D+1 evaluations remain, the local phase is skipped
 and that is recorded in the result's settings.
 
-Local start: the global best point. Initial simplex edge: the final
+Local start: the global best point (for a constrained problem, the best
+feasible point or, when there is none, the least-violating valid point).
+Initial simplex edge: the final
 normalized population spread of the global phase (the scale at which the
 global search stopped resolving), limited to [1e-6, 0.05]; 0.05 is the
 default Nelder-Mead edge and 1e-6 keeps the simplex non-degenerate in
@@ -73,11 +75,22 @@ def merge_results(first: OptimizationResult, second: OptimizationResult, *, algo
     """Concatenate two consecutive runs on the same problem into one result.
 
     The best point is the first run's unless the second found a strictly
-    lower valid objective. Populations are dropped (the phases differ in shape).
+    lower objective among its reportable points (valid, and feasible when the
+    problem has constraints). For a constrained problem the least-violating
+    point is the one with the smaller violation of the two runs. Populations
+    are dropped (the phases differ in shape).
     """
-    take_second = second.found_valid and (not first.found_valid or second.f_best < first.f_best)
+    take_second = second.x_best is not None and (first.x_best is None or second.f_best < first.f_best)
     best = second if take_second else first
     first_history, second_history = first.history, second.history
+    constrained = first.is_constrained or second.is_constrained
+    violation = None
+    if constrained:
+        # A phase without any constrained evaluation recorded none: every valid point there was feasible.
+        parts = [history.violation if history.violation is not None
+                 else np.where(history.status == 0, 0.0, np.nan)
+                 for history in (first_history, second_history)]
+        violation = np.concatenate(parts)
     history = OptimizationHistory(
         best_so_far=np.concatenate((first_history.best_so_far,
                                     np.minimum(second_history.best_so_far, first.f_best))),
@@ -88,21 +101,41 @@ def merge_results(first: OptimizationResult, second: OptimizationResult, *, algo
                                         np.minimum(second_history.generation_best, first.f_best))),
         generation_valid=np.concatenate((first_history.generation_valid, second_history.generation_valid)),
         generation_spread=np.concatenate((first_history.generation_spread, second_history.generation_spread)),
+        violation=violation,
     )
     counts = {name: int(first.status_counts.get(name, 0)) + int(second.status_counts.get(name, 0))
               for name in set(first.status_counts) | set(second.status_counts)}
     nfev = first.nfev + second.nfev
     generations = len(history.generation_nfev) - 1
-    found = best.found_valid
-    message = (f"stopped by {second.termination_reason.value} after {nfev} evaluations "
-               f"({first.nfev} global + {second.nfev} local) and {generations} generations; "
-               + ("best valid objective recorded" if found else "no valid evaluation found"))
+    found_valid = first.found_valid or second.found_valid
+    head = (f"stopped by {second.termination_reason.value} after {nfev} evaluations "
+            f"({first.nfev} global + {second.nfev} local) and {generations} generations; ")
+    extra: dict[str, Any] = {}
+    if constrained:
+        candidates = [run for run in (first, second) if run.least_violation is not None]
+        least = min(candidates, key=lambda run: run.least_violation) if candidates else None
+        extra = {
+            "constraint_handling": first.constraint_handling or second.constraint_handling,
+            "found_feasible": best.x_best is not None,
+            "least_violation": None if least is None else least.least_violation,
+            "x_least_violation": None if least is None else least.x_least_violation,
+            "u_least_violation": None if least is None else least.u_least_violation,
+            "least_violation_evaluation": None if least is None else least.least_violation_evaluation,
+        }
+        if best.x_best is not None:
+            outcome = "best feasible objective recorded"
+        elif least is not None:
+            outcome = f"no feasible point found (least total violation {least.least_violation:.6g})"
+        else:
+            outcome = "no valid evaluation found"
+    else:
+        outcome = "best valid objective recorded" if found_valid else "no valid evaluation found"
     return OptimizationResult(
         x_best=best.x_best, u_best=best.u_best, f_best=best.f_best, best_evaluation=best.best_evaluation,
-        found_valid=found, termination_reason=second.termination_reason, message=message, nfev=nfev,
+        found_valid=found_valid, termination_reason=second.termination_reason, message=head + outcome, nfev=nfev,
         status_counts=counts, generations=generations, seed=first.seed, algorithm=algorithm,
         settings=settings, termination=termination, problem_info=first.problem_info,
-        environment=first.environment, wall_time_s=wall_time_s, history=history,
+        environment=first.environment, wall_time_s=wall_time_s, history=history, **extra,
     )
 
 
@@ -182,11 +215,19 @@ class HybridOptimizer:
                 termination=termination, problem_info=global_result.problem_info,
                 environment=global_result.environment, wall_time_s=time.perf_counter() - start,
                 history=global_result.history,
+                constraint_handling=global_result.constraint_handling,
+                found_feasible=global_result.found_feasible,
+                least_violation=global_result.least_violation,
+                x_least_violation=global_result.x_least_violation,
+                u_least_violation=global_result.u_least_violation,
+                least_violation_evaluation=global_result.least_violation_evaluation,
             )
 
         spread = float(global_result.history.generation_spread[-1])
         step = float(min(MAXIMUM_LOCAL_STEP, max(MINIMUM_LOCAL_STEP, spread)))
-        initial = None if global_result.u_best is None else tuple(float(v) for v in global_result.u_best)
+        # Start from the best feasible point; without one, from the least-violating valid point.
+        origin = global_result.u_best if global_result.u_best is not None else global_result.u_least_violation
+        initial = None if origin is None else tuple(float(v) for v in origin)
         local = NelderMead(NelderMeadSettings(initial_point=initial, initial_step=step))
         local_result = local.minimize(
             problem, TerminationCriteria(max_evaluations=remaining, target_objective=termination.target_objective),

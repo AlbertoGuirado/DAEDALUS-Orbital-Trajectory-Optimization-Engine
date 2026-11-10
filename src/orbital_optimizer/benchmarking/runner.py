@@ -32,7 +32,7 @@ from numpy.typing import NDArray
 
 from ..optimization.optimizer import Optimizer
 from ..optimization.result import OptimizationResult, TerminationCriteria
-from .registry import Scenario, build_optimizer, build_scenario
+from .registry import Scenario, build_handling, build_optimizer, build_scenario
 from .statistics import evaluations_to_target
 
 SCHEMA: str = "daedalus.benchmark/1"
@@ -42,14 +42,20 @@ SCHEMA: str = "daedalus.benchmark/1"
 class RunRecord:
     """One optimizer run on one scenario with one seed.
 
-    f_best is +inf when no valid point was found. gap = f_best - reference
-    (None without a reference). success: see registry.Scenario (None when the
-    scenario declares no threshold). anomaly: the run is better than the
-    reference by more than the scenario's lower threshold.
-    evaluations_to_success: evaluations until the best-so-far value first met
-    the success threshold (None if never). metrics: scalars copied from the
-    best evaluation. verification: record of the scenario's verifier, or
-    None. best_so_far: read-only (nfev,) convergence history.
+    f_best is +inf when no reportable point was found (valid, and feasible
+    for a constrained problem). gap = f_best - reference (None without a
+    reference). success: see registry.Scenario (None when the scenario
+    declares no criterion). anomaly: the run is better than the reference by
+    more than the scenario's lower threshold. evaluations_to_success:
+    evaluations until the best-so-far value first met the success threshold
+    (None if never). metrics: scalars copied from the best evaluation.
+    verification: record of the scenario's verifier, or None. best_so_far:
+    read-only (nfev,) convergence history.
+
+    Constrained problems (None otherwise): feasible states whether a feasible
+    point was found; least_violation is the smallest total normalized
+    violation among the valid infeasible points evaluated (None if there was
+    none); constraint_handling names the strategy that ranked candidates.
     """
 
     scenario: str
@@ -58,6 +64,9 @@ class RunRecord:
     seed: int
     f_best: float
     found_valid: bool
+    feasible: bool | None
+    least_violation: float | None
+    constraint_handling: str | None
     gap: float | None
     success: bool | None
     anomaly: bool
@@ -76,7 +85,9 @@ class RunRecord:
         """Flat, JSON-compatible record without the convergence history."""
         row: dict[str, Any] = {
             "scenario": self.scenario, "algorithm": self.algorithm, "algorithm_name": self.algorithm_name,
-            "seed": self.seed, "f_best": self.f_best, "found_valid": self.found_valid, "gap": self.gap,
+            "seed": self.seed, "f_best": self.f_best, "found_valid": self.found_valid,
+            "feasible": self.feasible, "least_violation": self.least_violation,
+            "constraint_handling": self.constraint_handling, "gap": self.gap,
             "success": self.success, "anomaly": self.anomaly,
             "evaluations_to_success": self.evaluations_to_success, "nfev": self.nfev,
             "n_invalid": self.n_invalid, "generations": self.generations,
@@ -91,18 +102,22 @@ class RunRecord:
 def record_run(scenario: Scenario, algorithm_id: str, optimizer: Optimizer, seed: int,
                problem: Any, result: OptimizationResult) -> RunRecord:
     """Build the RunRecord of a finished run, applying the scenario's criteria."""
+    reportable = result.x_best is not None          # a valid point, feasible if the problem is constrained
     gap = None if scenario.reference is None else result.f_best - scenario.reference
     verification = None
-    if scenario.verifier is not None and result.found_valid:
+    if scenario.verifier is not None and reportable:
         verification = scenario.verifier(problem, result)
     success = None
     reached = None
-    if scenario.success_threshold is not None and scenario.reference is not None:
+    if scenario.expect_infeasible:
+        # No feasible transfer exists: the only correct outcome is to report none.
+        success = not reportable
+    elif scenario.success_threshold is not None and scenario.reference is not None:
         target = scenario.reference + scenario.success_threshold
-        success = bool(result.found_valid and result.f_best <= target
+        success = bool(reportable and result.f_best <= target
                        and (verification is None or verification["passed"]))
         reached = evaluations_to_target(result.history.best_so_far, target)
-    anomaly = bool(gap is not None and scenario.lower_threshold is not None and result.found_valid
+    anomaly = bool(gap is not None and scenario.lower_threshold is not None and reportable
                    and gap < -scenario.lower_threshold)
     metrics: dict[str, float] = {}
     if result.best_evaluation is not None:
@@ -114,7 +129,10 @@ def record_run(scenario: Scenario, algorithm_id: str, optimizer: Optimizer, seed
     history.setflags(write=False)
     return RunRecord(
         scenario=scenario.id, algorithm=algorithm_id, algorithm_name=optimizer.name, seed=int(seed),
-        f_best=float(result.f_best), found_valid=bool(result.found_valid), gap=gap, success=success,
+        f_best=float(result.f_best), found_valid=bool(result.found_valid),
+        feasible=result.found_feasible, least_violation=result.least_violation,
+        constraint_handling=None if result.constraint_handling is None else str(result.constraint_handling["name"]),
+        gap=gap, success=success,
         anomaly=anomaly, evaluations_to_success=reached, nfev=int(result.nfev), n_invalid=int(result.n_invalid),
         generations=int(result.generations), termination_reason=result.termination_reason.value,
         wall_time_s=float(result.wall_time_s),
@@ -123,18 +141,30 @@ def record_run(scenario: Scenario, algorithm_id: str, optimizer: Optimizer, seed
     )
 
 
-def run_once(scenario: Scenario, algorithm_id: str, optimizer: Optimizer, seed: int) -> RunRecord:
-    """Run ``optimizer`` on a fresh problem of ``scenario`` with its full budget and one seed."""
+def run_once(scenario: Scenario, algorithm_id: str, optimizer: Optimizer, seed: int,
+             handling: Any = None) -> RunRecord:
+    """Run ``optimizer`` on a fresh problem of ``scenario`` with its full budget and one seed.
+
+    ``handling``: constraint-handling strategy to use instead of the
+    problem's own; None keeps the problem's (Deb's feasibility rules by default).
+    """
     problem = scenario.problem_factory()
+    if handling is not None:
+        problem.constraint_handling = handling          # type: ignore[attr-defined]
     result = optimizer.minimize(problem, TerminationCriteria(max_evaluations=scenario.max_evaluations), seed=seed)
     return record_run(scenario, algorithm_id, optimizer, seed, problem, result)
 
 
+def run_configured(scenario_config: Mapping[str, Any], algorithm_config: Mapping[str, Any], seed: int) -> RunRecord:
+    """One run described entirely by configuration: scenario, algorithm entry (with its id) and seed."""
+    optimizer_config = {key: value for key, value in algorithm_config.items() if key != "id"}
+    return run_once(build_scenario(scenario_config), algorithm_config["id"], build_optimizer(optimizer_config),
+                    seed, build_handling(optimizer_config))
+
+
 def _run_from_config(task: tuple[Mapping[str, Any], Mapping[str, Any], int]) -> RunRecord:
     """Worker entry point: rebuild the scenario and the optimizer from their configurations."""
-    scenario_config, algorithm_config, seed = task
-    optimizer_config = {key: value for key, value in algorithm_config.items() if key != "id"}
-    return run_once(build_scenario(scenario_config), algorithm_config["id"], build_optimizer(optimizer_config), seed)
+    return run_configured(*task)
 
 
 def validate_config(config: Mapping[str, Any]) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]], list[int]]:

@@ -212,6 +212,15 @@ class Evaluation:
     ``objective`` is in the problem's objective unit. It must be finite when
     ``status`` is VALID; otherwise it records the raw value (NaN by default).
     ``metadata`` is a read-only mapping of problem-specific diagnostics.
+
+    Constraints (Phase 4). ``constraint_violation`` is None for a problem
+    without constraints. A constrained problem sets it to the total
+    normalized violation V >= 0 of its hard constraints (dimensionless; 0
+    means feasible, +inf a constraint that could not be evaluated) and
+    ``constraints`` to the normalized violation of each one by name. The
+    objective is always the raw objective: a violation is never folded into
+    it. How violations affect the search is decided by the optimizer's
+    constraint handling, not here.
     """
 
     x: NDArray[np.float64]
@@ -219,6 +228,8 @@ class Evaluation:
     status: EvaluationStatus
     message: str = ""
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    constraint_violation: float | None = None
+    constraints: Mapping[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.status, EvaluationStatus):
@@ -234,13 +245,40 @@ class Evaluation:
             raise ValueError("a VALID evaluation requires a finite objective")
         if not isinstance(self.message, str):
             raise ValueError("message must be a string")
+        violation = self.constraint_violation
+        if violation is not None:
+            if isinstance(violation, bool) or not isinstance(violation, (int, float, np.integer, np.floating)) \
+                    or math.isnan(violation) or violation < 0:
+                raise ValueError("constraint_violation must be None or a real number >= 0")
+            violation = float(violation)
+        constraints = {}
+        for name, amount in dict(self.constraints).items():
+            if not isinstance(name, str) or isinstance(amount, bool) \
+                    or not isinstance(amount, (int, float, np.integer, np.floating)) \
+                    or math.isnan(amount) or amount < 0:
+                raise ValueError("constraints must map names to normalized violations >= 0")
+            constraints[name] = float(amount)
+        if constraints and violation is None:
+            raise ValueError("constraints require a constraint_violation")
         object.__setattr__(self, "x", _read_only(x))
         object.__setattr__(self, "objective", value)
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
+        object.__setattr__(self, "constraint_violation", violation)
+        object.__setattr__(self, "constraints", MappingProxyType(constraints))
 
     @property
     def is_valid(self) -> bool:
         return self.status.is_valid
+
+    @property
+    def is_constrained(self) -> bool:
+        """True if the problem reported a constraint violation (possibly zero)."""
+        return self.constraint_violation is not None
+
+    @property
+    def is_feasible(self) -> bool:
+        """VALID and without constraint violation; for an unconstrained problem, the same as valid."""
+        return self.status.is_valid and (self.constraint_violation is None or self.constraint_violation == 0.0)
 
 
 @runtime_checkable

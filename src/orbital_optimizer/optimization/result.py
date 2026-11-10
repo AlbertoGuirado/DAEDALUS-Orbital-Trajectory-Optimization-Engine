@@ -125,6 +125,10 @@ class OptimizationHistory:
       generation_valid[g]: valid members in the population;
       generation_spread[g]: largest per-variable normalized range.
     populations: (G+1, NP, D) normalized populations, or None if not recorded.
+    violation: only for constrained problems (else None). violation[k] is the
+      total normalized constraint violation of evaluation k: 0 if feasible,
+      NaN if the evaluation was not valid. With constraints, best_so_far and
+      generation_best refer to feasible points only (+inf before the first one).
     """
 
     best_so_far: NDArray[np.float64]
@@ -134,6 +138,7 @@ class OptimizationHistory:
     generation_valid: NDArray[np.int64]
     generation_spread: NDArray[np.float64]
     populations: NDArray[np.float64] | None = None
+    violation: NDArray[np.float64] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "best_so_far", _frozen(self.best_so_far, float))
@@ -144,6 +149,10 @@ class OptimizationHistory:
         object.__setattr__(self, "generation_spread", _frozen(self.generation_spread, float))
         if self.populations is not None:
             object.__setattr__(self, "populations", _frozen(self.populations, float))
+        if self.violation is not None:
+            object.__setattr__(self, "violation", _frozen(self.violation, float))
+            if self.violation.shape != self.best_so_far.shape:
+                raise ValueError("violation must have one entry per evaluation")
         if self.best_so_far.shape != self.status.shape or self.best_so_far.ndim != 1:
             raise ValueError("per-evaluation arrays must be one-dimensional with equal length")
         lengths = {len(self.generation_nfev), len(self.generation_best),
@@ -163,6 +172,8 @@ class OptimizationHistory:
         }
         if self.populations is not None:
             data["populations"] = self.populations
+        if self.violation is not None:
+            data["violation"] = self.violation
         return _jsonable(data)
 
 
@@ -214,6 +225,18 @@ class OptimizationResult:
     makes no claim of optimality. ``status_counts`` maps each status value to
     its number of evaluations. ``wall_time_s`` is informative and excluded from
     reproducibility comparisons.
+
+    Constrained problems (Phase 4). The last six fields are None for a
+    problem without constraints, and its record (``to_dict``) is then exactly
+    the unconstrained one. With constraints, x_best, u_best, f_best and
+    best_evaluation describe the best **feasible** point: they are None and
+    +inf when none was found, even if valid infeasible points exist
+    (``found_valid`` may then be True while ``found_feasible`` is False).
+    The valid point with the smallest total normalized violation is kept
+    apart in ``x_least_violation``, ``u_least_violation``,
+    ``least_violation`` and ``least_violation_evaluation`` (None if every
+    valid point was feasible); it is a diagnostic, never a solution.
+    ``constraint_handling`` describes the strategy that ranked candidates.
     """
 
     x_best: NDArray[np.float64] | None
@@ -234,31 +257,52 @@ class OptimizationResult:
     environment: Mapping[str, Any]
     wall_time_s: float
     history: OptimizationHistory
+    constraint_handling: Mapping[str, Any] | None = None
+    found_feasible: bool | None = None
+    least_violation: float | None = None
+    x_least_violation: NDArray[np.float64] | None = None
+    u_least_violation: NDArray[np.float64] | None = None
+    least_violation_evaluation: Evaluation | None = None
 
     def __post_init__(self) -> None:
-        for name in ("x_best", "u_best"):
+        for name in ("x_best", "u_best", "x_least_violation", "u_least_violation"):
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, _frozen(value, float))
         for name in ("status_counts", "settings", "problem_info", "environment"):
             object.__setattr__(self, name, MappingProxyType(dict(getattr(self, name))))
+        if self.constraint_handling is not None:
+            object.__setattr__(self, "constraint_handling", MappingProxyType(dict(self.constraint_handling)))
 
     @property
     def n_invalid(self) -> int:
         """Number of evaluations whose status is not VALID."""
         return self.nfev - int(self.status_counts.get(EvaluationStatus.VALID.value, 0))
 
+    @property
+    def is_constrained(self) -> bool:
+        """True if the problem reported constraint violations during the run."""
+        return self.constraint_handling is not None
+
+    @staticmethod
+    def _evaluation_record(evaluation: Evaluation | None, constrained: bool) -> dict[str, Any] | None:
+        if evaluation is None:
+            return None
+        record = {
+            "x": evaluation.x,
+            "objective": evaluation.objective,
+            "status": evaluation.status,
+            "message": evaluation.message,
+            "metadata": evaluation.metadata,
+        }
+        if constrained:
+            record["constraint_violation"] = evaluation.constraint_violation
+            record["constraints"] = evaluation.constraints
+        return record
+
     def to_dict(self, *, include_history: bool = True) -> dict[str, Any]:
         """Strict-JSON-compatible record of the run, configuration and environment."""
-        best = None
-        if self.best_evaluation is not None:
-            best = {
-                "x": self.best_evaluation.x,
-                "objective": self.best_evaluation.objective,
-                "status": self.best_evaluation.status,
-                "message": self.best_evaluation.message,
-                "metadata": self.best_evaluation.metadata,
-            }
+        best = self._evaluation_record(self.best_evaluation, self.is_constrained)
         data: dict[str, Any] = {
             "algorithm": self.algorithm,
             "seed": self.seed,
@@ -279,6 +323,15 @@ class OptimizationResult:
             "environment": self.environment,
             "wall_time_s": self.wall_time_s,
         }
+        if self.is_constrained:
+            data["constraints"] = {
+                "handling": self.constraint_handling,
+                "found_feasible": self.found_feasible,
+                "least_violation": self.least_violation,
+                "x_least_violation": self.x_least_violation,
+                "u_least_violation": self.u_least_violation,
+                "least_violation_evaluation": self._evaluation_record(self.least_violation_evaluation, True),
+            }
         if include_history:
             data["history"] = self.history
         return _jsonable(data)

@@ -138,6 +138,8 @@ class ScalarizedProblem:
         self.bounds = problem.bounds
         self.name = name if name is not None else f"{problem.name}:weighted"
         _text(self.name, "name")
+        # A constrained base problem keeps its constraint handling and its violations.
+        self.constraint_handling = getattr(problem, "constraint_handling", None)
 
     def evaluate(self, x: ArrayLike) -> Evaluation:
         """Evaluate the base problem at x and scalarize its metadata."""
@@ -152,4 +154,5 @@ class ScalarizedProblem:
         if not math.isfinite(value):
             return Evaluation(base.x, value, EvaluationStatus.NON_FINITE,
                               f"weighted objective is {value}", metadata)
-        return Evaluation(base.x, value, EvaluationStatus.VALID, base.message, metadata)
+        return Evaluation(base.x, value, EvaluationStatus.VALID, base.message, metadata,
+                          base.constraint_violation, dict(base.constraints))

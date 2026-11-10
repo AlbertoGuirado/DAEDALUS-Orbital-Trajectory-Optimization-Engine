@@ -18,11 +18,19 @@ settings, problem and environment): DifferentialEvolution (reference
 algorithm), ParticleSwarm, GeneticAlgorithm, RandomSearch (null baseline),
 NelderMead (local refinement) and HybridOptimizer (global + final local
 refinement). None of them guarantees a global optimum.
+
+Constraints (Phase 4): a problem may report a total normalized violation
+with each evaluation. The optimizers rank candidates through a constraint
+handling strategy (constraint_handling: FeasibilityRules by default,
+DeathPenalty, StaticPenalty) and always report the best feasible point.
 """
 
 from .benchmarks import (
     BenchmarkFunction, rastrigin, rastrigin_benchmark, rosenbrock, rosenbrock_benchmark,
     sphere, sphere_benchmark,
+)
+from .constraint_handling import (
+    ConstraintHandling, DeathPenalty, FeasibilityRules, StaticPenalty, feasibility_key, handling_from_mapping,
 )
 from .differential_evolution import ALGORITHM, DifferentialEvolution, DifferentialEvolutionSettings
 from .genetic_algorithm import GeneticAlgorithm, GeneticAlgorithmSettings
@@ -52,6 +60,8 @@ __all__ = [
     "RandomSearch", "RandomSearchSettings", "NelderMead", "NelderMeadSettings",
     "HybridOptimizer", "HybridSettings", "merge_results",
     "ObjectiveTerm", "WeightedObjective", "ScalarizedProblem",
+    "ConstraintHandling", "FeasibilityRules", "DeathPenalty", "StaticPenalty", "feasibility_key",
+    "handling_from_mapping",
     "BenchmarkFunction", "sphere", "rosenbrock", "rastrigin",
     "sphere_benchmark", "rosenbrock_benchmark", "rastrigin_benchmark",
 ]

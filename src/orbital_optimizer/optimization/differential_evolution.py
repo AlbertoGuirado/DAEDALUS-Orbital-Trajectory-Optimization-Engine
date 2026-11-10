@@ -41,8 +41,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .optimizer import (
-    EvaluationBudget, check_termination, environment_info, make_rng, problem_info, validate_problem,
-    validate_seed,
+    EvaluationBudget, check_termination, environment_info, make_rng, problem_info, run_message,
+    validate_problem, validate_seed,
 )
 from .problem import Problem
 from .result import OptimizationHistory, OptimizationResult, TerminationCriteria, TerminationReason
@@ -141,8 +141,10 @@ def _repair(trials: NDArray, parents: NDArray, periodic: NDArray) -> NDArray:
 def _trial_wins(trial_valid: bool, trial_value: float, parent_valid: bool, parent_value: float) -> bool:
     """Selection by key (0, f) for valid points and (1, 0) for invalid ones, with <=.
 
-    This is the single comparison point that a future constraint-handling rule
-    (Phase 4) would replace; Phase 3 implements rejection only.
+    It states the selection rule for a problem without constraints. The
+    optimizer applies it through ``EvaluationBudget.key``, which gives the
+    same decisions there and, for a constrained problem (Phase 4), the
+    ranking of its constraint handling instead.
     """
     if trial_valid and parent_valid:
         return trial_value <= parent_value
@@ -187,10 +189,12 @@ class DifferentialEvolution:
         population = rng.random((size, dimension))
         values = np.full(size, np.inf)
         valid = np.zeros(size, dtype=bool)
+        keys = []
         for i in range(size):
             evaluation = budget.evaluate(population[i])
             valid[i] = evaluation.is_valid
             values[i] = evaluation.objective if evaluation.is_valid else np.inf
+            keys.append(budget.key(evaluation))
 
         records: dict[str, list[Any]] = {"nfev": [], "best": [], "valid": [], "spread": [], "populations": []}
 
@@ -221,10 +225,13 @@ class DifferentialEvolution:
                     break
                 evaluation = budget.evaluate(trials[i])
                 trial_value = evaluation.objective if evaluation.is_valid else np.inf
-                if _trial_wins(evaluation.is_valid, trial_value, bool(valid[i]), float(values[i])):
+                # Without constraints this is _trial_wins; with them the handling decides.
+                trial_key = budget.key(evaluation)
+                if trial_key <= keys[i]:
                     population[i] = trials[i]
                     values[i] = trial_value
                     valid[i] = evaluation.is_valid
+                    keys[i] = trial_key
             stagnant = stagnant + 1 if not budget.best_value < previous_best else 0
             previous_best = budget.best_value
             spread = record()
@@ -241,17 +248,16 @@ class DifferentialEvolution:
             generation_valid=records["valid"],
             generation_spread=records["spread"],
             populations=np.array(records["populations"]) if self.settings.record_population else None,
+            violation=budget.violations() if budget.constrained else None,
         )
-        found = budget.best_evaluation is not None
-        message = (f"stopped by {reason.value} after {budget.used} evaluations and {generation} generations; "
-                   + ("best valid objective recorded" if found else "no valid evaluation found"))
+        message = run_message(budget, reason, generation)
         logger.info("%s seed=%d: %s", ALGORITHM, seed, message)
         return OptimizationResult(
             x_best=budget.best_x,
             u_best=budget.best_u,
             f_best=budget.best_value,
             best_evaluation=budget.best_evaluation,
-            found_valid=found,
+            found_valid=budget.valid_count > 0,
             termination_reason=reason,
             message=message,
             nfev=budget.used,
@@ -274,6 +280,7 @@ class DifferentialEvolution:
             environment=environment_info(),
             wall_time_s=wall_time,
             history=history,
+            **budget.constraint_record(),
         )
 
     @staticmethod

@@ -1,0 +1,50 @@
+{
+  "schema": "daedalus.benchmark/1",
+  "name": "phase4-constraint-handling",
+  "description": "Phase 4 experiment: four constraint-handling strategies on the same optimizer (DE/rand/1/bin@1, literature defaults), the same problems and the same seeds (RF-4.10). Scenarios, budgets, seeds, coefficients, thresholds and acceptance criteria were fixed on 2026-11-10, before the first execution. Transfers are coplanar two-impulse LEO (6 678 km) to GEO (42 164 km); Hohmann: 3 892.608 m/s, 18 990.05 s. Budget 10^3 D evaluations as in the Phase 3 benchmark. Success: a feasible solution within 1 m/s of the reference whose plan reaches the target and whose constraints still hold when recomputed from a numerical propagation (tolerance 1e-6 of each scale). Scenario 'time-limited': duration at most 0.8 of the Hohmann time, so the limit binds; reference from problems.references. 'tight-budget': delta-v budget of 1.02 times Hohmann, which does not bind at the optimum but leaves a thin feasible region. 'altitude-floor': minimum altitude equal to the altitude of the initial orbit (299 863 m), so every transfer that first descends is infeasible and the optimum lies on the constraint. 'propellant-short': 2 000 kg on board where the cheapest transfer needs 2 132 kg, so no feasible transfer exists and the only correct outcome is to report none. Penalty coefficients are in m/s and multiply the sum of squared normalized violations: 1e4 makes a 1 % violation cost 1 m/s, the success threshold; 1e8 makes a 0.01 % violation cost 1 m/s.",
+  "seeds": {"first": 0, "count": 30},
+  "algorithms": [
+    {"id": "feasibility-rules", "type": "differential_evolution",
+     "constraint_handling": {"type": "feasibility_rules"}},
+    {"id": "death-penalty", "type": "differential_evolution",
+     "constraint_handling": {"type": "death_penalty"}},
+    {"id": "penalty-1e4", "type": "differential_evolution",
+     "constraint_handling": {"type": "static_penalty", "coefficient": 1.0e4,
+                             "rationale": "weak penalty: a 1 % normalized violation costs 1 m/s, the success threshold of the benchmark"}},
+    {"id": "penalty-1e8", "type": "differential_evolution",
+     "constraint_handling": {"type": "static_penalty", "coefficient": 1.0e8,
+                             "rationale": "strong penalty: a 0.01 % normalized violation costs 1 m/s; four orders above the weak one to expose the sensitivity to the coefficient"}}
+  ],
+  "scenarios": [
+    {"id": "time-limited", "type": "constrained_transfer",
+     "initial_radius_m": 6678000.0, "final_radius_m": 42164000.0, "impulses": 2, "max_evaluations": 2000,
+     "spacecraft": {"dry_mass_kg": 500.0, "propellant_mass_kg": 2500.0, "max_thrust_n": 400.0, "specific_impulse_s": 320.0},
+     "limits": {"max_duration_s": 15192.041470785},
+     "reference": {"type": "time_limited"},
+     "success_threshold_m_s": 1.0, "lower_threshold_m_s": 0.001},
+    {"id": "tight-budget", "type": "constrained_transfer",
+     "initial_radius_m": 6678000.0, "final_radius_m": 42164000.0, "impulses": 2, "max_evaluations": 2000,
+     "spacecraft": {"dry_mass_kg": 500.0, "propellant_mass_kg": 2500.0, "max_thrust_n": 400.0, "specific_impulse_s": 320.0},
+     "limits": {"max_delta_v_m_s": 3970.459898463},
+     "reference": {"type": "hohmann"},
+     "success_threshold_m_s": 1.0, "lower_threshold_m_s": 0.001},
+    {"id": "altitude-floor", "type": "constrained_transfer",
+     "initial_radius_m": 6678000.0, "final_radius_m": 42164000.0, "impulses": 2, "max_evaluations": 2000,
+     "spacecraft": {"dry_mass_kg": 500.0, "propellant_mass_kg": 2500.0, "max_thrust_n": 400.0, "specific_impulse_s": 320.0},
+     "limits": {"min_altitude_m": 299863.0},
+     "reference": {"type": "hohmann"},
+     "success_threshold_m_s": 1.0, "lower_threshold_m_s": 0.001},
+    {"id": "propellant-short", "type": "constrained_transfer",
+     "initial_radius_m": 6678000.0, "final_radius_m": 42164000.0, "impulses": 2, "max_evaluations": 2000,
+     "spacecraft": {"dry_mass_kg": 1000.0, "propellant_mass_kg": 2000.0, "max_thrust_n": 400.0, "specific_impulse_s": 320.0},
+     "limits": {},
+     "reference": {"type": "infeasible"}}
+  ],
+  "acceptance": {
+    "max_anomalies": 0,
+    "require_verification": true,
+    "minimum_success_rate": {
+      "propellant-short": {"feasibility-rules": 1.0, "death-penalty": 1.0, "penalty-1e4": 1.0, "penalty-1e8": 1.0}
+    }
+  }
+}
