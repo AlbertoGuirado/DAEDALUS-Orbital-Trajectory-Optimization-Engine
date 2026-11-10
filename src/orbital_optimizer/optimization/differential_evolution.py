@@ -40,7 +40,10 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 
-from .optimizer import EvaluationBudget, environment_info, make_rng, problem_info, validate_problem, validate_seed
+from .optimizer import (
+    EvaluationBudget, check_termination, environment_info, make_rng, problem_info, validate_problem,
+    validate_seed,
+)
 from .problem import Problem
 from .result import OptimizationHistory, OptimizationResult, TerminationCriteria, TerminationReason
 
@@ -276,19 +279,8 @@ class DifferentialEvolution:
     @staticmethod
     def _check(termination: TerminationCriteria, budget: EvaluationBudget, generation: int,
                spread: float, valid: NDArray, values: NDArray, stagnant: int) -> TerminationReason | None:
-        """Return the first satisfied criterion in TERMINATION_PRECEDENCE order, or None."""
-        if budget.exhausted:
-            return TerminationReason.MAX_EVALUATIONS
-        if termination.target_objective is not None and budget.best_value <= termination.target_objective:
-            return TerminationReason.TARGET_REACHED
-        if termination.x_tol is not None and spread <= termination.x_tol:
-            return TerminationReason.POPULATION_CONVERGED
-        if (termination.f_tol is not None and np.all(valid)
-                and float(np.max(values) - np.min(values)) <= termination.f_tol):
-            return TerminationReason.OBJECTIVE_CONVERGED
-        if (termination.stagnation_generations is not None and generation > 0
-                and stagnant >= termination.stagnation_generations):
-            return TerminationReason.STAGNATION
-        if termination.max_generations is not None and generation >= termination.max_generations:
-            return TerminationReason.MAX_GENERATIONS
-        return None
+        """Return the first satisfied criterion in TERMINATION_PRECEDENCE order, or None.
+
+        The rule is shared by every optimizer: optimizer.check_termination.
+        """
+        return check_termination(termination, budget, generation, spread, valid, values, stagnant)

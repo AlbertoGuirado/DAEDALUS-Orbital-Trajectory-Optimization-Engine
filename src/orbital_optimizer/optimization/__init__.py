@@ -1,4 +1,4 @@
-"""Generic optimization engine (Phase 3): problems, results and Differential Evolution.
+"""Generic optimization engine (Phase 3): problems, results and optimizers.
 
 Physics independence is static and limited to direct imports: the modules of
 this subpackage import only NumPy, the standard library and each other
@@ -12,6 +12,12 @@ in the physics layers imports this subpackage. Lazy loading in the root
 package (e.g. a module-level ``__getattr__``, PEP 562) would avoid that cost;
 it is a possible future change, not implemented. See docs/phase3-api.md.
 Orbital problems must adapt to these interfaces from a separate layer.
+
+Optimizers (all implement ``Optimizer``; identical results for the same seed,
+settings, problem and environment): DifferentialEvolution (reference
+algorithm), ParticleSwarm, GeneticAlgorithm, RandomSearch (null baseline),
+NelderMead (local refinement) and HybridOptimizer (global + final local
+refinement). None of them guarantees a global optimum.
 """
 
 from .benchmarks import (
@@ -19,8 +25,17 @@ from .benchmarks import (
     sphere, sphere_benchmark,
 )
 from .differential_evolution import ALGORITHM, DifferentialEvolution, DifferentialEvolutionSettings
-from .optimizer import EvaluationBudget, Optimizer, environment_info, make_rng, problem_info, validate_seed
+from .genetic_algorithm import GeneticAlgorithm, GeneticAlgorithmSettings
+from .hybrid import HybridOptimizer, HybridSettings, merge_results
+from .nelder_mead import NelderMead, NelderMeadSettings
+from .objective import ObjectiveTerm, ScalarizedProblem, WeightedObjective
+from .optimizer import (
+    EvaluationBudget, GenerationLog, Optimizer, check_termination, environment_info, finish_run,
+    make_rng, problem_info, validate_seed,
+)
+from .particle_swarm import ParticleSwarm, ParticleSwarmSettings
 from .problem import Bounds, Evaluation, EvaluationStatus, FunctionProblem, Problem
+from .random_search import RandomSearch, RandomSearchSettings
 from .result import (
     STATUS_ORDER, TERMINATION_PRECEDENCE, OptimizationHistory, OptimizationResult,
     TerminationCriteria, TerminationReason,
@@ -30,8 +45,13 @@ __all__ = [
     "Bounds", "Evaluation", "EvaluationStatus", "FunctionProblem", "Problem",
     "TerminationCriteria", "TerminationReason", "TERMINATION_PRECEDENCE", "STATUS_ORDER",
     "OptimizationHistory", "OptimizationResult",
-    "Optimizer", "EvaluationBudget", "environment_info", "make_rng", "problem_info", "validate_seed",
+    "Optimizer", "EvaluationBudget", "GenerationLog", "check_termination", "finish_run",
+    "environment_info", "make_rng", "problem_info", "validate_seed",
     "ALGORITHM", "DifferentialEvolution", "DifferentialEvolutionSettings",
+    "ParticleSwarm", "ParticleSwarmSettings", "GeneticAlgorithm", "GeneticAlgorithmSettings",
+    "RandomSearch", "RandomSearchSettings", "NelderMead", "NelderMeadSettings",
+    "HybridOptimizer", "HybridSettings", "merge_results",
+    "ObjectiveTerm", "WeightedObjective", "ScalarizedProblem",
     "BenchmarkFunction", "sphere", "rosenbrock", "rastrigin",
     "sphere_benchmark", "rosenbrock_benchmark", "rastrigin_benchmark",
 ]

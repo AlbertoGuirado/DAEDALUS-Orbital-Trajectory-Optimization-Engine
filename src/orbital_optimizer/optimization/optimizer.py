@@ -12,9 +12,14 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .problem import Bounds, Evaluation, Problem
-from .result import STATUS_ORDER, OptimizationResult, TerminationCriteria
+from .result import (
+    STATUS_ORDER, OptimizationHistory, OptimizationResult, TerminationCriteria, TerminationReason,
+)
 
 BIT_GENERATOR: str = "PCG64"
+
+# Ranking key of one evaluation: lexicographic, lower is better.
+Key = tuple[int, float]
 
 
 @runtime_checkable
@@ -146,6 +151,16 @@ class EvaluationBudget:
         self._best_so_far.append(self.best_value)
         return evaluation
 
+    def key(self, evaluation: Evaluation) -> Key:
+        """Ranking key shared by every optimizer: (0, objective) if VALID, else (1, 0.0).
+
+        Keys compare lexicographically and lower is better, so a valid point
+        always beats an invalid one and invalid points are mutually tied. It
+        is the comparison of DE's selection (differential_evolution._trial_wins)
+        in key form; algorithms that only compare candidates use it directly.
+        """
+        return (0, evaluation.objective) if evaluation.is_valid else (1, 0.0)
+
     def status_codes(self) -> NDArray[np.int8]:
         return np.array(self._status, dtype=np.int8)
 
@@ -155,3 +170,122 @@ class EvaluationBudget:
     def status_counts(self) -> dict[str, int]:
         codes = self.status_codes()
         return {status.value: int(np.count_nonzero(codes == index)) for index, status in enumerate(STATUS_ORDER)}
+
+
+def check_termination(termination: TerminationCriteria, budget: EvaluationBudget, generation: int,
+                      spread: float, valid: NDArray, values: NDArray, stagnant: int) -> TerminationReason | None:
+    """Return the first satisfied criterion in TERMINATION_PRECEDENCE order, or None.
+
+    ``spread`` is the largest per-variable normalized range of the retained
+    population, ``valid``/``values`` its validity flags and objectives (+inf
+    for invalid members) and ``stagnant`` the number of consecutive
+    generations without a strict decrease of the best valid objective.
+    """
+    if budget.exhausted:
+        return TerminationReason.MAX_EVALUATIONS
+    if termination.target_objective is not None and budget.best_value <= termination.target_objective:
+        return TerminationReason.TARGET_REACHED
+    if termination.x_tol is not None and spread <= termination.x_tol:
+        return TerminationReason.POPULATION_CONVERGED
+    if (termination.f_tol is not None and np.all(valid)
+            and float(np.max(values) - np.min(values)) <= termination.f_tol):
+        return TerminationReason.OBJECTIVE_CONVERGED
+    if (termination.stagnation_generations is not None and generation > 0
+            and stagnant >= termination.stagnation_generations):
+        return TerminationReason.STAGNATION
+    if termination.max_generations is not None and generation >= termination.max_generations:
+        return TerminationReason.MAX_GENERATIONS
+    return None
+
+
+class GenerationLog:
+    """Per-generation convergence record shared by the optimizers (RF-3.18).
+
+    ``record`` is called once after the initial population (generation 0) and
+    once after every later generation with the retained normalized population,
+    shape (N, D), and its validity flags, shape (N,). It returns the spread,
+    max_j (max_i u_ij - min_i u_ij).
+    """
+
+    def __init__(self, budget: EvaluationBudget, record_population: bool = False) -> None:
+        self.budget = budget
+        self.record_population = bool(record_population)
+        self.nfev: list[int] = []
+        self.best: list[float] = []
+        self.valid: list[int] = []
+        self.spread: list[float] = []
+        self.populations: list[NDArray[np.float64]] = []
+
+    def record(self, population: NDArray[np.float64], valid: NDArray[np.bool_]) -> float:
+        spread = float(np.max(np.ptp(population, axis=0)))
+        self.nfev.append(self.budget.used)
+        self.best.append(self.budget.best_value)
+        self.valid.append(int(np.count_nonzero(valid)))
+        self.spread.append(spread)
+        if self.record_population:
+            self.populations.append(np.array(population, dtype=float, copy=True))
+        return spread
+
+    def history(self) -> OptimizationHistory:
+        return OptimizationHistory(
+            best_so_far=self.budget.best_so_far(),
+            status=self.budget.status_codes(),
+            generation_nfev=self.nfev,
+            generation_best=self.best,
+            generation_valid=self.valid,
+            generation_spread=self.spread,
+            populations=np.array(self.populations) if self.record_population else None,
+        )
+
+
+def finish_run(*, problem: Problem, budget: EvaluationBudget, log: GenerationLog,
+               termination: TerminationCriteria, reason: TerminationReason, generations: int,
+               seed: int, algorithm: str, settings: dict[str, Any], wall_time_s: float) -> OptimizationResult:
+    """Assemble the OptimizationResult of a finished run from its budget and log."""
+    found = budget.best_evaluation is not None
+    message = (f"stopped by {reason.value} after {budget.used} evaluations and {generations} generations; "
+               + ("best valid objective recorded" if found else "no valid evaluation found"))
+    return OptimizationResult(
+        x_best=budget.best_x,
+        u_best=budget.best_u,
+        f_best=budget.best_value,
+        best_evaluation=budget.best_evaluation,
+        found_valid=found,
+        termination_reason=reason,
+        message=message,
+        nfev=budget.used,
+        status_counts=budget.status_counts(),
+        generations=generations,
+        seed=seed,
+        algorithm=algorithm,
+        settings=settings,
+        termination=termination,
+        problem_info=problem_info(problem),
+        environment=environment_info(),
+        wall_time_s=wall_time_s,
+        history=log.history(),
+    )
+
+
+def wrap_unit(values: NDArray[np.float64], periodic: NDArray[np.bool_]) -> NDArray[np.float64]:
+    """Return a copy with periodic components reduced modulo 1 into [0, 1).
+
+    The modulo of a tiny negative number can round to exactly 1.0, which is
+    the same point as 0.0 one period later; it is mapped to 0.0.
+    """
+    result = np.array(values, dtype=float, copy=True)
+    if np.any(periodic):
+        wrapped = np.mod(result[..., periodic], 1.0)
+        wrapped[wrapped >= 1.0] = 0.0
+        result[..., periodic] = wrapped
+    return result
+
+
+def signed_unit_difference(target: NDArray[np.float64], origin: NDArray[np.float64],
+                           periodic: NDArray[np.bool_]) -> NDArray[np.float64]:
+    """target - origin, using the shortest signed arc in [-0.5, 0.5) for periodic components."""
+    difference = np.asarray(target, dtype=float) - np.asarray(origin, dtype=float)
+    if np.any(periodic):
+        difference = np.array(difference, copy=True)
+        difference[..., periodic] = np.mod(difference[..., periodic] + 0.5, 1.0) - 0.5
+    return difference

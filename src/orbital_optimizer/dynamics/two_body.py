@@ -6,9 +6,8 @@ Equations and scope: docs/phase1.md; inertial Cartesian SI coordinates.
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-# Conventional Earth GM, IERS TN36, Table 1.1; m^3/s^2.
-# https://iers-conventions.obspm.fr/content/tn36.pdf
-EARTH_MU: float = 3.986004418e14
+# Conventional Earth GM, IERS TN36, Table 1.1; m^3/s^2. Defined once in constants.py (RD-01).
+from ..constants import EARTH_MU
 
 
 def real_array(value: ArrayLike, name: str) -> NDArray[np.float64]:

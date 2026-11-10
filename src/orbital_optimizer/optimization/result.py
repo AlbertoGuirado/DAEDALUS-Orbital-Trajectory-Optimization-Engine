@@ -192,6 +192,15 @@ def _jsonable(value: Any) -> Any:
     return repr(value)
 
 
+def jsonable(value: Any) -> Any:
+    """Strict-JSON form of results and reports: arrays to lists, enums to values,
+
+    mappings to dicts with string keys and non-finite floats to the strings
+    'inf', '-inf' and 'nan' (strict JSON has no such numbers).
+    """
+    return _jsonable(value)
+
+
 @dataclass(frozen=True, eq=False)
 class OptimizationResult:
     """Outcome of one optimization run.

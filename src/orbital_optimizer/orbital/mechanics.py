@@ -58,7 +58,8 @@ def delta_v(velocity_before: ArrayLike, velocity_after: ArrayLike) -> float:
 
 
 # Conventional standard gravity defining specific impulse, m/s^2; not local gravity.
-STANDARD_GRAVITY: float = 9.80665
+# Defined once in constants.py (RD-01); re-exported here for the Phase 2 API.
+from ..constants import STANDARD_GRAVITY  # noqa: E402
 
 
 def propellant_mass(initial_mass: float, delta_v: float, specific_impulse: float) -> float:

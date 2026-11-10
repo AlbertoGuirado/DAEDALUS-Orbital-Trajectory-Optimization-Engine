@@ -147,3 +147,59 @@ def elliptic_time_of_flight(
     if not np.isfinite(time):
         raise RuntimeError("time of flight exceeds floating-point range")
     return time
+
+
+def radius_extrema_on_arc(
+    true_anomaly_start: float,
+    duration: float,
+    semi_major_axis: float,
+    eccentricity: float,
+    mu: float = EARTH_MU,
+) -> tuple[float, float]:
+    """Minimum and maximum radius (m) on the Keplerian arc flown for ``duration`` seconds.
+
+    r(nu) = a(1-e^2)/(1+e*cos(nu)) decreases from apoapsis to periapsis and
+    increases back, so over an arc its extrema are at the end points or at an
+    apsis inside the arc. With M0 = M(nu_start) reduced to [0, 2*pi) and
+    sweep = n*duration, n = sqrt(mu/a^3):
+
+        periapsis (M = 2*pi*k) is inside iff M0 + sweep >= 2*pi;
+        apoapsis (M = pi + 2*pi*k) is inside iff M0 <= pi <= M0 + sweep
+            or M0 + sweep >= 3*pi;
+        both are inside when sweep >= 2*pi.
+
+    The end radius is a(1 - e*cos(E)) with E = solve_kepler(M0 + sweep, e);
+    an apsis that coincides with an end point is covered by that end point.
+    The result is exact for two-body motion up to roundoff: it does not
+    sample the arc, so a periapsis between two samples cannot be missed
+    (RF-4.05). Angles in radians, a > 0 in metres, 0 <= e < 1, duration >= 0
+    in seconds, mu in m^3/s^2. Invalid input raises ValueError; a non-finite
+    result raises RuntimeError.
+    """
+    start = _scalar(true_anomaly_start, "true_anomaly_start")
+    span = _scalar(duration, "duration")
+    if span < 0:
+        raise ValueError("duration must be nonnegative, in seconds")
+    a = _scalar(semi_major_axis, "semi_major_axis")
+    if a <= 0:
+        raise ValueError("semi_major_axis must be positive, in metres")
+    e = _validate_eccentricity(eccentricity)
+    gm = validate_mu(mu)
+    periapsis, apoapsis = a * (1 - e), a * (1 + e)
+    with np.errstate(over="ignore", invalid="ignore"):
+        sweep = float(span * np.sqrt(gm / a) / a)
+        start_radius = float(a * (1 - e) * (1 + e) / (1 + e * np.cos(start)))
+    if not (np.isfinite(sweep) and np.isfinite(start_radius) and np.isfinite(apoapsis)):
+        raise RuntimeError("arc extrema exceed floating-point range")
+    if sweep >= 2 * np.pi:
+        return float(periapsis), float(apoapsis)
+    mean_start = true_to_mean_anomaly(_reduce(start)[0], e) % (2 * np.pi)
+    mean_end = mean_start + sweep
+    end_radius = float(a * (1 - e * np.cos(solve_kepler(mean_end, e))))
+    low, high = min(start_radius, end_radius), max(start_radius, end_radius)
+    if mean_end >= 2 * np.pi:
+        low = periapsis
+    if mean_start <= np.pi <= mean_end or mean_end >= 3 * np.pi:
+        high = apoapsis
+    # Roundoff can leave an end-point radius an ulp outside [r_p, r_a].
+    return float(max(periapsis, low)), float(min(apoapsis, high))

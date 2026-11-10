@@ -27,9 +27,16 @@ PACKAGE = SOURCE / "orbital_optimizer"
 PHYSICS_DIRS = [PACKAGE / "dynamics", PACKAGE / "orbital", PACKAGE / "simulation",
                 PACKAGE / "visualization", SOURCE / "physics"]
 ROOT_INIT = PACKAGE / "__init__.py"
+# Leaf modules of the physics layer that live directly in the package root.
+PHYSICS_MODULES = [PACKAGE / "constants.py"]
 OPTIMIZATION_DIR = PACKAGE / "optimization"
 OPTIMIZATION = "orbital_optimizer.optimization"
-FORBIDDEN_FOR_PHYSICS = ("orbital_optimizer.optimization", "orbital_optimizer.problems")
+# Layers above the physics, lowest first. A layer may import the ones before it, never the ones after.
+UPPER_LAYERS = ("orbital_optimizer.optimization", "orbital_optimizer.problems", "orbital_optimizer.benchmarking",
+                "orbital_optimizer.mission")
+FORBIDDEN_FOR_PHYSICS = UPPER_LAYERS
+# Interface libraries of the Verification Console: the core must not depend on them.
+UI_LIBRARIES = ("streamlit", "plotly", "pandas", "altair")
 DYNAMIC_IMPORT_MODULES = ("importlib", "runpy", "pkgutil")
 ALLOWED_THIRD_PARTY = {"numpy"}
 DYNAMIC = "<dynamic import>"
@@ -196,10 +203,42 @@ class LayeringTests(unittest.TestCase):
             self.assertTrue(source_files(directory), directory)
 
     def test_physics_and_simulation_do_not_import_optimization(self) -> None:
-        files = [ROOT_INIT] + [path for directory in PHYSICS_DIRS for path in source_files(directory)]
+        files = [ROOT_INIT] + PHYSICS_MODULES + [path for directory in PHYSICS_DIRS for path in source_files(directory)]
         for path in files:
             with self.subTest(file=str(path.relative_to(SOURCE))):
+                self.assertTrue(path.is_file())
                 self.assertEqual(physics_violations(path.read_text(encoding="utf-8"), package_of(path)), [])
+
+    def test_constants_module_is_a_leaf(self) -> None:
+        # RD-01: one place for the constants, importable by every layer, importing none.
+        source = (PACKAGE / "constants.py").read_text(encoding="utf-8")
+        self.assertEqual(imported_names(source, "orbital_optimizer"), [])
+
+    def test_upper_layers_do_not_import_the_layers_above_them(self) -> None:
+        for index, layer in enumerate(UPPER_LAYERS):
+            directory = PACKAGE / layer.rsplit(".", 1)[1]
+            if not directory.is_dir():          # a layer of a later phase that does not exist yet
+                continue
+            above = UPPER_LAYERS[index + 1:]
+            for path in source_files(directory):
+                names = imported_names(path.read_text(encoding="utf-8"), package_of(path))
+                with self.subTest(file=str(path.relative_to(SOURCE))):
+                    self.assertEqual([name for name in names if any(_within(name, prefix) for prefix in above)], [])
+
+    def test_upper_layer_checker_flags_known_bad_imports(self) -> None:
+        above_problems = UPPER_LAYERS[2:]
+        for source in ("from ..benchmarking import run_benchmark", "import orbital_optimizer.mission",
+                       "from orbital_optimizer.benchmarking.runner import run_once"):
+            names = imported_names(source, "orbital_optimizer.problems")
+            with self.subTest(source=source):
+                self.assertTrue([name for name in names if any(_within(name, prefix) for prefix in above_problems)])
+
+    def test_core_does_not_import_interface_libraries(self) -> None:
+        # The Verification Console depends on the core; the core never depends on its libraries.
+        for path in source_files(SOURCE):
+            names = imported_names(path.read_text(encoding="utf-8"), package_of(path))
+            with self.subTest(file=str(path.relative_to(SOURCE))):
+                self.assertEqual([name for name in names if name.split(".")[0] in UI_LIBRARIES], [])
 
     def test_root_package_does_not_reexport_optimization_or_problems(self) -> None:
         # Q5: the optimizer is imported from orbital_optimizer.optimization, not from the root.
