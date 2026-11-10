@@ -1,8 +1,8 @@
 # Fase 2: baseline analítico (API y resultados)
 
 Alcance: RF-2.01 a RF-2.04 y RV-2.01 a RV-2.03 de
-[02-requerimientos.md](02-requerimientos.md). Quedan fuera los requisitos
-recomendados u opcionales (bielíptica, cambio de plano, Lambert).
+[02-requerimientos.md](02-requerimientos.md), más la transferencia bielíptica
+(RF-2.05), añadida el 2026-11-10. Quedan fuera el cambio de plano y Lambert.
 Teoría: [03-fundamentos](03-fundamentos-cientificos-y-algoritmicos.md), secciones 8.2 y 9.1.
 
 Todas las funciones se exportan desde `orbital_optimizer`. Unidades SI:
@@ -153,8 +153,62 @@ superficie, colisiones ni encuentro con un vehículo de fase orbital fijada.
 Hohmann calcula un baseline; no resuelve una misión ni certifica optimalidad
 global frente a otros números de impulsos, tiempos o restricciones.
 
-**Planned:** bielíptica, cambio de plano, Lambert, optimización y restricciones
-operativas. No se incluyen en el cierre de los requisitos obligatorios de Phase 2.
+**Planned:** cambio de plano y Lambert (RF-2.06, RF-2.07). No se incluyen en
+el cierre de los requisitos obligatorios de Phase 2. La transferencia
+bielíptica (RF-2.05) se implementó el 2026-11-10; véase la sección siguiente.
+
+## Transferencia bielíptica
+
+**Implemented (RF-2.05, 2026-11-10):**
+
+```python
+bielliptic_transfer(initial_radius, final_radius, intermediate_radius, mu=EARTH_MU) -> BiellipticTransfer
+```
+
+Transferencia de tres impulsos entre radios circulares coplanarios a través
+de un apoapsis exterior \(r_b \ge \max(r_1, r_2)\). Con
+\(a_1=(r_1+r_b)/2\), \(a_2=(r_2+r_b)/2\), vis-viva
+\(v(r,a)=\sqrt{\mu(2/r-1/a)}\) y \(v_c(r)=\sqrt{\mu/r}\):
+
+\[
+\Delta v_1=|v(r_1,a_1)-v_c(r_1)|,\qquad
+\Delta v_2=|v(r_b,a_2)-v(r_b,a_1)|,\qquad
+\Delta v_3=|v_c(r_2)-v(r_2,a_2)|,
+\]
+
+\[
+t=\pi\sqrt{a_1^3/\mu}+\pi\sqrt{a_2^3/\mu}.
+\]
+
+Devuelve un `BiellipticTransfer` congelado con `first_delta_v`,
+`second_delta_v`, `third_delta_v`, `total_delta_v` (m/s), `transfer_time` (s),
+`first_semi_major_axis` y `second_semi_major_axis` (m). Los impulsos son
+módulos. Un radio intermedio menor que alguno de los dos radios produce
+`ValueError`; un resultado no finito, `RuntimeError`. Se exporta desde
+`orbital_optimizer`.
+
+Con \(r_b=\max(r_1,r_2)\) degenera en la transferencia de Hohmann con un
+impulso nulo y medio periodo adicional sobre la órbita circular mayor.
+
+**Régimen en que supera a Hohmann** (comprobado en
+`tests/test_arc_extrema_and_bielliptic.py` con las formas cerradas; \(R=r_2/r_1\)):
+
+| Relación de radios | Resultado comprobado |
+|---|---|
+| \(R = 11{,}5\) | Hohmann es más barata para todo \(r_b\) probado (de 1,001 a 10⁶ veces \(r_2\)) |
+| \(R \approx 11{,}94\) | El límite biparabólico \((\sqrt2-1)(v_{c1}+v_{c2})\) iguala a Hohmann; localizado por bisección en \(11{,}94 \pm 0{,}005\) |
+| \(R = 13\) | Depende de \(r_b\): peor con \(r_b=1{,}5\,r_2\), mejor con \(r_b=10^3\,r_2\) |
+| \(R = 15{,}4\) y \(15{,}8\) | Con \(r_b=1{,}001\,r_2\) la bielíptica pasa de ser peor a ser mejor |
+| \(R = 16\) | La bielíptica es más barata para todo \(r_b>r_2\) probado |
+
+El ahorro se paga en tiempo: la transferencia dura mucho más que la de Hohmann.
+
+## Propagación impulsiva con trayectoria
+
+**Implemented (DT-11, 2026-11-10):** `propagate_impulsive_arcs` devuelve la
+trayectoria muestreada de cada arco, además del estado final, y admite
+`method="Kepler"`. `propagate_with_impulses` no cambia. Contrato:
+[phase3-api.md](phase3-api.md#propagación-impulsiva-con-arcos-simulationimpulsive).
 
 ## Referencias
 

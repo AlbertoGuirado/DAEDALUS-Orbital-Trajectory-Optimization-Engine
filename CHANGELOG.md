@@ -1,6 +1,24 @@
 # Changelog
 
-## Unreleased — integración de Fase 1 (Kepler) y Fase 2 en `develop`
+## Unreleased — Fase 3: motor de optimización (`feature/phase-3-optimization`)
+
+- Interfaces genéricas (`Bounds`, `Problem`, `Evaluation`, `Optimizer`,
+  `TerminationCriteria`, `OptimizationResult`) y `DifferentialEvolution`
+  (`DE/rand/1/bin@1`), con semilla, presupuesto e historia.
+- Optimizadores de comparación: `ParticleSwarm`, `GeneticAlgorithm`,
+  `RandomSearch`, `NelderMead` y `HybridOptimizer`.
+- Objetivo ponderado adimensional (`WeightedObjective`, `transfer_objective`).
+- Problemas `CoplanarTwoImpulseProblem` y `CoplanarMultiImpulseProblem`
+  (N impulsos, subida y bajada), planes y verificación por propagación.
+- Física: `constants.py` como único lugar de constantes, ayudas de anomalías,
+  `radius_extrema_on_arc`, `bielliptic_transfer` (RF-2.05) y
+  `propagate_impulsive_arcs` (DT-11).
+- Benchmark multisemilla (`orbital_optimizer.benchmarking`,
+  `experiments/benchmark_optimizers.py`) con estadística no paramétrica,
+  criterios de aceptación en la configuración y exportación de evidencia.
+- 266 tests (215 de la Fase 3). Resultados: `docs/phase3-validation.md`.
+
+## Integración de Fase 1 (Kepler) y Fase 2 en `develop`
 
 - Fase 1: ecuación de Kepler (`solve_kepler`) y propagación kepleriana
   analítica (`propagate_kepler`); documentación de cierre de la Fase 1.

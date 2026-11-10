@@ -4,7 +4,8 @@
 
 Autonomous Orbital Transfer Optimizer: optimización matemática de trayectorias orbitales.
 
-**Estado en `develop`: Fases 1 y 2 implementadas; Fase 3 no iniciada.**
+**Estado (2026-11-10): Fases 1 y 2 integradas en `develop`. Fase 3 implementada
+y validada en `feature/phase-3-optimization`, pendiente de integración.**
 
 - **Fase 1 — Orbital Dynamics Engine.** Motor de dos cuerpos en Python, con
   conversiones orbitales, RK4/RK45, ecuación de Kepler (`solve_kepler`) y
@@ -14,10 +15,18 @@ Autonomous Orbital Transfer Optimizer: optimización matemática de trayectorias
   circulares coplanarias (`hohmann_transfer`), propelente por Tsiolkovsky
   (`propellant_mass`) y propagación con impulsos instantáneos
   (`propagate_with_impulses`), verificada propagando la trayectoria.
-  Bielíptica, cambio de plano y Lambert no están implementados.
+  Transferencia bielíptica (`bielliptic_transfer`). Cambio de plano y Lambert
+  no están implementados.
+- **Fase 3 — Motor de optimización.** Interfaz común de optimizador con
+  semilla, presupuesto e historia; Differential Evolution, enjambre de
+  partículas, algoritmo genético, búsqueda aleatoria, Nelder–Mead e híbrido;
+  objetivo ponderado adimensional; problemas de transferencia coplanaria de
+  dos y de N impulsos verificados por propagación; benchmark multisemilla con
+  estadística no paramétrica. Ver [API](docs/phase3-api.md) y
+  [validación ejecutada](docs/phase3-validation.md).
 
-El objetivo del proyecto es optimización matemática de transferencias; los
-optimizadores (Fases 3–6) aún no existen.
+Las restricciones de misión, las perturbaciones y el optimizador de misiones
+(Fases 4–6) no están implementados en esta rama.
 
 ## Ejecutar en PowerShell
 
@@ -69,10 +78,15 @@ La implementación está en `src/orbital_optimizer/{dynamics,orbital,simulation,
 Los archivos vacíos originales de misiones/optimización/agent son reservas de
 fases posteriores y no se publican como algoritmos implementados.
 
-El experimento es determinista: no precisa seeds. Las comparaciones de
-optimizadores, múltiples seeds, curvas de convergencia y Pareto se incorporarán
-cuando existan esos algoritmos. El siguiente hito es la Fase 3 (Differential
-Evolution validado frente al óptimo de Hohmann), pendiente de aprobación.
+El experimento de la Fase 1 es determinista: no precisa seeds. El benchmark
+de optimizadores usa semillas explícitas y se lanza con:
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.benchmark_optimizers --config configs/benchmarks/phase3_differential_evolution.json --output outputs/<ejecucion-nueva> --plots --jobs 8
+```
+
+Ningún optimizador garantiza un óptimo global; los resultados valen para los
+escenarios, presupuestos y semillas configurados.
 
 La interfaz Streamlit local se desarrolla aparte, en la rama `feature/streamlit-ui`.
 

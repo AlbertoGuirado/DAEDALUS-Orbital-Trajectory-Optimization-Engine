@@ -359,3 +359,30 @@ Un componente se considera terminado cuando cumple las siete condiciones siguien
 
 La [auditoría de integración](phase1-phase2-audit.md) registra 47 tests OK,
 reproducción de casos y límites. No se han modificado requisitos ni tolerancias.
+
+## Estado de implementación tras Phase 3 — 2026-11-10
+
+Rama `feature/phase-3-optimization`. Los requisitos no cambian; esta sección
+solo registra su estado. Trazabilidad requisito a requisito y evidencia:
+[phase3-validation.md](phase3-validation.md).
+
+- **Implemented:** RF-3.01 a RF-3.05, RF-3.07 a RF-3.14 y RF-3.16 a RF-3.21;
+  RV-3.01 a RV-3.04. También RF-2.05 (transferencia bielíptica) y RD-01
+  (`constants.py` como único lugar de las constantes).
+- **No implementado:** RF-3.06 (recomendado), RF-3.15 (opcional), RF-3.22 y
+  RF-3.23 (recomendados); RF-2.06 y RF-2.07.
+- **Matiz de RF-3.03:** la igualdad "llegar a la órbita objetivo" se elimina
+  por construcción (el último impulso se deriva) y los predicados de dominio
+  actúan como desigualdades. Las restricciones de misión corresponden a la Fase 4.
+- **Matiz de RF-3.19:** los términos de energía y riesgo son indicadores
+  declarados y documentados, no modelos validados; su peso por defecto es cero.
+
+### Deuda técnica: revisión del 2026-11-10
+
+| ID | Estado | Evidencia o decisión |
+|---|---|---|
+| DT-10 | Resuelto | Estados `INVALID_DOMAIN` y `NUMERICAL_FAILURE`; predicados analíticos previos a la física |
+| DT-11 | Resuelto | `propagate_impulsive_arcs` conserva los arcos; `radius_extrema_on_arc` da el mínimo exacto de cada arco |
+| DT-13 | Resuelto | Los impulsos coincidentes se rechazan de forma explícita como `INVALID_DOMAIN` |
+| DT-14 | Medido | El objetivo usa propagación analítica; coste por evaluación en [phase3-validation.md](phase3-validation.md) |
+| DT-12, DT-15, DT-16, DT-08 | Sin cambios | Corresponden a fases posteriores, a la interfaz o a la publicación |

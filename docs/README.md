@@ -22,7 +22,11 @@ Resultados, entorno y alcance: [auditoría de integración](phase1-phase2-audit.
 | [API y datos](phase1-api.md) | Interfaces reales, configuración, resultados y errores |
 | [Validación ejecutada](phase1-validation.md) | Ejecución original y reproducción del cierre |
 | [Auditoría y cierre](phase1-closeout.md) | Registro histórico de Phase 1 |
-| [API de Phase 2](phase2-api.md) | Hohmann, propelente, impulsos y límites |
+| [API de Phase 2](phase2-api.md) | Hohmann, bielíptica, propelente, impulsos y límites |
+| [API de Phase 3](phase3-api.md) | Optimizadores, objetivo ponderado, problemas de transferencia y benchmark |
+| [Validación de Phase 3](phase3-validation.md) | Tests, benchmark de cierre del 2026-11-10 y trazabilidad de requisitos |
+| [Evidencia registrada](evidence/) | Registros JSON derivados de los informes de experimentos |
+| [Auditorías independientes](audits/) | Informe de auditoría de cada fase |
 | [Auditoría de integración](phase1-phase2-audit.md) | Estado actual, evidencia reproducida y discrepancias |
 | [Flujo de datos](data-flow-mission-planning.md) | Conexión real entre APIs y orquestación propuesta |
 | [Informe visual](informe-visual.html) | Mapa interactivo de capacidades y planes |

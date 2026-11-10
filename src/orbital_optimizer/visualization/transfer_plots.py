@@ -69,14 +69,19 @@ def save_transfer_figure(trajectory: ImpulsiveTrajectory, initial_radius: float,
         path = plane_coordinates(arc.states[:, :3], basis) / 1000
         axis.plot(path[:, 0], path[:, 1], color=colors[1], linewidth=2, solid_capstyle="round",
                   label="Transfer trajectory" if index == 0 else None, zorder=3)
-    # Position of each burn: the sample of the trajectory at the burn time.
+    # Position of each burn: the sample of the trajectory at the burn time. Burns can coincide in
+    # position (e.g. a split circularization), so the marks carry only a number, placed in a
+    # different direction for each burn, and the values are listed once in a corner.
     times = trajectory.times()
+    offsets = ((9, 9), (9, -16), (-16, 9), (-16, -16))
+    lines = []
     for number, (time, vector) in enumerate(zip(trajectory.burn_times, trajectory.burn_vectors), start=1):
         point = plane_coordinates(states[int(np.argmin(np.abs(times - time)))][None, :3], basis)[0] / 1000
         axis.scatter([point[0]], [point[1]], s=52, color=ink["primary"], edgecolors=SURFACE["light"],
                      linewidths=1.5, zorder=5)
-        axis.annotate(f"Δv{number} = {np.linalg.norm(vector):.1f} m/s", point, xytext=(8, 8),
-                      textcoords="offset points", fontsize=8, color=ink["secondary"], zorder=6)
+        axis.annotate(str(number), point, xytext=offsets[(number - 1) % len(offsets)],
+                      textcoords="offset points", fontsize=9, color=ink["primary"], zorder=6)
+        lines.append(f"{number}:  Δv = {np.linalg.norm(vector):.1f} m/s  at  t = {time:.0f} s")
     extent = 1.08 * max(float(np.max(np.linalg.norm(states[:, :3], axis=1))), initial_radius, final_radius) / 1000
     axis.set_xlim(-extent, extent)
     axis.set_ylim(-extent, extent)
@@ -89,7 +94,12 @@ def save_transfer_figure(trajectory: ImpulsiveTrajectory, initial_radius: float,
     legend = axis.legend(loc="upper right", frameon=False, fontsize=8)
     for text in legend.get_texts():
         text.set_color(ink["secondary"])
-    figure.tight_layout()
+    # The burn values go under the plot, where they cannot cover the trajectory.
+    reserved = 0.02 + 0.024 * len(lines)
+    figure.tight_layout(rect=(0, reserved, 1, 1))
+    if lines:
+        figure.text(0.13, 0.012, "\n".join(lines), ha="left", va="bottom", fontsize=8,
+                    color=ink["secondary"], linespacing=1.4)
     output.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(output, dpi=160, facecolor=figure.get_facecolor())
     plt.close(figure)
